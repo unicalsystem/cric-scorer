@@ -4,6 +4,14 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.21.0 - 6 November 2026
+- Match photos: a new **📷 Timeline** tab on every match (like CricHeroes) where players add photos from the ground - the toss, the huddle, that big six - with an optional caption
+- Who can add: the scorer/creator, either team's owner, or any signed-in player in the playing XI (up to 40 photos a match); the uploader or the scorer can caption or remove a photo
+- Photos are shrunk on the phone before upload (max 1600px) and re-drawn on the server (max 1280px JPEG, lower quality when still large, 420px thumbnails), EXIF rotation honoured and location data stripped - a 5 MB phone photo ends up around 100-300 KB
+- The Timeline mixes photos with the match's moments: toss, innings start/break, fifties, hundreds, 50 partnerships, 3/5-wicket hauls, scorer notes and the result, newest first, each photo stamped with the score at that moment
+- Full-screen viewer with swipe/arrow keys, caption editing and delete; photos also show on the pre-match page before the first ball
+- Photos are deleted with the match; uploads are served with long browser caching and never cached by the service worker
+
 ## 1.20.0 - 4 November 2026
 - Test matches: a new *Format* picker on the New Match form (Limited overs / Test match) with days and follow-on lead; no over limit and no bowler limit
 - Two innings a side: declare from the match menu ("Declare this innings"), follow-on switch on the innings-break screen when the lead is big enough, 4th-innings target worked out automatically, team-innings chips (CSK 1st / DC 1st / CSK 2nd) on the scorecard and "120/4 & 88/2" on match cards

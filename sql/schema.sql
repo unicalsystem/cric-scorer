@@ -269,3 +269,21 @@ INSERT INTO match_types (name, overs, balls_per_over, players_per_side, max_over
 ('Gully Cricket', 5, 6, 6, 0, 1, '5 overs, 6 a side, last man stands, no bowling limit', 1),
 ('Backyard (Kids)', 3, 6, 3, 0, 1, '3 overs, up to 3 a side, last man stands', 1),
 ('Custom', 8, 6, 11, 0, 0, 'Set your own overs and players', 1);
+
+-- v1.21 match photos (timeline)
+CREATE TABLE match_photos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  match_id INT NOT NULL,
+  user_id INT NULL,
+  who VARCHAR(100) NULL,
+  file VARCHAR(120) NOT NULL,
+  thumb VARCHAR(120) NOT NULL,
+  width SMALLINT NOT NULL DEFAULT 0,
+  height SMALLINT NOT NULL DEFAULT 0,
+  bytes INT NOT NULL DEFAULT 0,
+  caption VARCHAR(200) NULL,
+  score VARCHAR(40) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX (match_id), INDEX (user_id),
+  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -915,3 +915,123 @@ viewMatchNew = async tid => {
   if (pre) venue.value = pre.name + ', ' + pre.city;
 };
 ROUTES.forEach(r => { if (r[1] === _viewMatchNew2 || r[1] === _viewMatchNew3) r[1] = viewMatchNew; });
+
+/* ---------- v1.21 Match photos + Timeline (like CricHeroes) ---------- */
+const _matchTabs3 = matchTabs;
+matchTabs = st => {
+  const tl = S.mTab === 'timeline'; if (tl) S.mTab = 'summary';   // render a tab with no innings chips, then swap its body
+  let h = _matchTabs3(st); if (tl) S.mTab = 'timeline';
+  const n = (st.photos || []).length;
+  h = h.replace(/<button class="(?:on)?" onclick="S\.mTab='overs'/, `<button class="${tl ? 'on' : ''}" onclick="S.mTab='timeline';drawMatch(false)">📷 Timeline${n ? ` (${n})` : ''}</button>$&`);
+  if (tl) {
+    const i = h.indexOf('</div>', h.indexOf('<div class="seg scroll">')) + 6;
+    h = h.slice(0, i).replace(/<button class="on" onclick="S\.mTab='summary'/, `<button class="" onclick="S.mTab='summary'`) + timelineView(st) + '</div>';
+  }
+  return h;
+};
+const _drawMatch1 = drawMatch;
+drawMatch = first => {
+  _drawMatch1(first);
+  // Before the first ball there are no tabs - still show the photos (team photo, toss) under the pre-match board
+  if (!S.m.innings.length && (S.m.can_photo || (S.m.photos || []).length)) {
+    const app = document.getElementById('app'), last = app.lastElementChild;
+    const html = `<div class="content" style="padding-top:0">${timelineView(S.m, true)}</div>`;
+    if (last && last.classList.contains('content')) last.insertAdjacentHTML('afterend', html); else app.insertAdjacentHTML('beforeend', html);
+  }
+};
+const tlTime = s => { const d = new Date(String(s).replace(' ', 'T')); return isNaN(d) ? '' : d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }); };
+const tlDay = s => { const d = new Date(String(s).replace(' ', 'T')); return isNaN(d) ? '' : d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }); };
+/** Photos, milestones, scorer notes and the result, newest first, grouped by day */
+function timelineView(st, compact = false) {
+  const m = st.match, ev = [];
+  (st.photos || []).forEach((p, k) => ev.push({ at: p.at, kind: 'photo', p, k }));
+  if (!compact) {
+    ((st.notes && st.notes.notes) || []).forEach(n => ev.push({ at: n.at, kind: 'note', text: n.text, icon: /^Innings break|^End:|^Match ended|Innings started|Innings ended/.test(n.text) ? '☕' : /wickets?$/.test(n.text) ? '🎯' : /: (50|100) off/.test(n.text) ? '🏏' : /wicket: 50 runs/.test(n.text) ? '🤝' : '📈' }));
+    (st.log || []).forEach(l => ev.push({ at: l.at, kind: 'log', text: l.text, who: l.who, score: l.score, icon: '✍️' }));
+    if (m.toss_winner_id && st.innings.length) { const t = teamById(m.toss_winner_id); ev.push({ at: (st.innings[0].started_at || (st.notes && st.notes.notes[0] && st.notes.notes[0].at) || m.match_date), kind: 'note', text: `${t.name} won the toss and chose to ${m.toss_decision}`, icon: '🪙', first: true }); }
+  }
+  ev.sort((a, b) => (a.first ? -1 : b.first ? 1 : 0) || String(a.at).localeCompare(String(b.at)) || (a.kind === 'photo') - (b.kind === 'photo'));
+  ev.reverse();
+  const add = st.can_photo ? `<button class="btn block" style="margin-bottom:12px" onclick="App.photoPick()">📷 Add match photos</button><input type="file" id="mphotoFile" accept="image/*" multiple hidden onchange="App.photosChosen(this)">` : '';
+  if (!ev.length) return add + `<div class="card empty"><div class="big">📷</div>${st.can_photo ? 'No photos yet. Snap the toss, the team huddle, that big six!' : 'No photos or moments yet.'}</div>`;
+  let out = '', day = null;
+  ev.forEach(e => {
+    const d = tlDay(e.at);
+    if (d !== day) { day = d; out += `<div class="tl-day">${esc(d)}</div>`; }
+    if (e.kind === 'photo') {
+      const p = e.p;
+      out += `<div class="tl-row"><div class="tl-dot photo">📷</div><div class="tl-body"><div class="tl-meta"><b>${esc(p.who || 'Someone')}</b> added a photo${p.score ? ` <span class="muted">· at ${esc(p.score)}</span>` : ''}<span class="tl-time">${tlTime(p.at)}</span></div>
+        <div class="tl-photo" onclick="App.photoOpen(${e.k})"><img src="${esc(p.thumb)}?v=${p.id}" alt="${esc(p.caption || 'Match photo')}" loading="lazy" style="aspect-ratio:${p.w && p.h ? p.w + '/' + p.h : '4/3'}"></div>
+        ${p.caption ? `<div class="tl-cap">${esc(p.caption)}</div>` : ''}</div></div>`;
+    } else {
+      out += `<div class="tl-row"><div class="tl-dot">${e.icon}</div><div class="tl-body"><div class="tl-text">${e.who ? `<b>${esc(e.who)}</b>: ` : ''}${esc(e.text)}${e.score ? ` <span class="muted small">at ${esc(e.score)}</span>` : ''}<span class="tl-time">${tlTime(e.at)}</span></div></div></div>`;
+    }
+  });
+  return add + `<div class="card flush tl">${out}</div>`;
+}
+App.photoPick = () => document.getElementById('mphotoFile')?.click();
+/** Shrink a photo on the phone: long side ≤ 1600px, JPEG; lower the quality a step if it is still over ~700 KB */
+async function shrinkPhoto(file) {
+  if (!/^image\//.test(file.type)) throw new Error('Please choose photos only');
+  if (file.size > 40 * 1024 * 1024) throw new Error('That photo is too big');
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) {
+    bmp = await new Promise((ok, no) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = () => { URL.revokeObjectURL(u); no(new Error("This photo type can't be opened here. Try a JPG or PNG.")); }; im.src = u; });
+  }
+  const sw = bmp.naturalWidth || bmp.width, sh = bmp.naturalHeight || bmp.height;
+  const draw = (maxSide, q) => { const s = Math.min(1, maxSide / Math.max(sw, sh)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(sw * s)); c.height = Math.max(1, Math.round(sh * s)); const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', q); };
+  let data = draw(1600, 0.82);
+  if (data.length > 700 * 1024 * 1.37) data = draw(1280, 0.72);
+  if (data.length > 700 * 1024 * 1.37) data = draw(1024, 0.62);
+  if (bmp.close) bmp.close();
+  return { data, w: sw, h: sh };
+}
+App.photosChosen = async input => {
+  const files = [...(input.files || [])].slice(0, 10); input.value = '';
+  if (!files.length) return;
+  toast(`Getting ${plural(files.length, 'photo')} ready…`);
+  const ready = [];
+  for (const f of files) { try { ready.push(await shrinkPhoto(f)); } catch (e) { toast(e.message, true); } }
+  if (!ready.length) return;
+  S.pq = ready;
+  sheet(`<h3>Add ${plural(ready.length, 'photo')}</h3><div class="sub">Photos are shrunk on your phone and again on the server, so they upload fast even on a slow ground signal.</div>
+    <div class="pq">${ready.map(r => `<img src="${r.data}" alt="">`).join('')}</div>
+    <div class="field"><label>Caption (optional${ready.length > 1 ? ', used for all' : ''})</label><input class="input" id="pqCap" maxlength="200" placeholder="e.g. Toss time! · Aarush's 50 · Team huddle"></div>
+    <button class="btn block" id="pqGo" onclick="App.photosUpload(this)">⬆️ Upload</button>`);
+};
+App.photosUpload = async btn => {
+  const list = S.pq || []; S.pq = null; const cap = (document.getElementById('pqCap') || {}).value || '';
+  btn.disabled = true; let done = 0, last = null;
+  for (const r of list) {
+    btn.textContent = `Uploading ${done + 1} of ${list.length}…`;
+    try { last = await api('match_photo_add', { id: S.m.match.id, image: r.data, caption: cap }); done++; } catch (e) { toast(e.message, true); }
+  }
+  closeSheet();
+  if (last) { S.m.photos = last.photos; S.mTab = S.m.innings.length ? 'timeline' : S.mTab; drawMatch(false); }
+  if (done) toast(done === 1 ? 'Photo added to the timeline 📷' : `${done} photos added 📷`);
+};
+/* full-screen viewer with swipe-free prev/next, caption edit and delete */
+App.photoOpen = k => { S.pv = k; App.photoDraw(); };
+App.photoDraw = () => {
+  const ps = S.m.photos || [], k = S.pv; const p = ps[k]; if (!p) return App.photoClose();
+  let el = document.getElementById('lightbox'); if (!el) { el = document.createElement('div'); el.id = 'lightbox'; document.body.appendChild(el); }
+  el.innerHTML = `<div class="lb-top"><button class="icon-btn" aria-label="Close" onclick="App.photoClose()">✕</button><span>${k + 1} / ${ps.length}</span>
+      ${p.can_delete ? `<button class="icon-btn" aria-label="Caption" onclick="App.photoCaption(${p.id})">✏️</button><button class="icon-btn" aria-label="Delete" onclick="App.photoDelete(${p.id})">🗑️</button>` : '<span></span>'}</div>
+    <div class="lb-img" onclick="App.photoNext(1)"><img src="${esc(p.url)}?v=${p.id}" alt="${esc(p.caption || 'Match photo')}"></div>
+    ${k > 0 ? '<button class="lb-nav l" onclick="event.stopPropagation();App.photoNext(-1)">‹</button>' : ''}${k < ps.length - 1 ? '<button class="lb-nav r" onclick="event.stopPropagation();App.photoNext(1)">›</button>' : ''}
+    <div class="lb-cap">${p.caption ? `<div>${esc(p.caption)}</div>` : ''}<div class="muted small">${esc(p.who || '')}${p.score ? ' · at ' + esc(p.score) : ''} · ${esc(fmtDate(p.at))}</div></div>`;
+  let x0 = null; el.ontouchstart = e => { x0 = e.touches[0].clientX; }; el.ontouchend = e => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 50) App.photoNext(dx < 0 ? 1 : -1); };
+  document.body.style.overflow = 'hidden';
+};
+App.photoNext = d => { const n = (S.m.photos || []).length; const k = S.pv + d; if (k < 0 || k >= n) return; S.pv = k; App.photoDraw(); };
+App.photoClose = () => { document.getElementById('lightbox')?.remove(); document.body.style.overflow = ''; };
+App.photoCaption = id => {
+  const p = (S.m.photos || []).find(x => x.id === id); if (!p) return;
+  const cap = prompt('Caption for this photo', p.caption || ''); if (cap === null) return;
+  run(async () => { const r = await api('match_photo_caption', { id: S.m.match.id, photo_id: id, caption: cap }); S.m.photos = r.photos; App.photoDraw(); drawMatch(false); toast('Caption saved'); });
+};
+App.photoDelete = id => confirmSheet('Remove this photo?', 'It will disappear from the match timeline for everyone.', 'Remove', () => run(async () => {
+  const r = await api('match_photo_delete', { id: S.m.match.id, photo_id: id }); S.m.photos = r.photos; closeSheet(); App.photoClose(); drawMatch(false); toast('Photo removed');
+}));
+document.addEventListener('keydown', e => { if (!document.getElementById('lightbox')) return; if (e.key === 'Escape') App.photoClose(); if (e.key === 'ArrowRight') App.photoNext(1); if (e.key === 'ArrowLeft') App.photoNext(-1); });
+window.addEventListener('hashchange', App.photoClose);

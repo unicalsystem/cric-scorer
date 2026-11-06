@@ -10,3 +10,8 @@ Options -Indexes
 <IfModule mod_php.c>
   php_flag engine off
 </IfModule>
+<IfModule mod_headers.c>
+  <FilesMatch "\.(jpe?g|png|webp)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+</IfModule>

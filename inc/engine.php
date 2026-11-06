@@ -710,6 +710,8 @@ function match_state(int $matchId, ?array $u): array {
         'notes' => $inns ? match_notes($m, rows('SELECT * FROM innings WHERE match_id=? ORDER BY innings_no', [$matchId]), $names) : ['notes' => [], 'timings' => []],
         'log' => array_map(fn($r) => ['who' => $r['who'], 'text' => $r['text'], 'score' => $r['score'], 'at' => $r['created_at']], rows('SELECT * FROM match_log WHERE match_id=? ORDER BY id', [$matchId])),
         'mvp' => $inns ? mvp_points($matchId) : [],
+        'photos' => match_photos($m, $u),
+        'can_photo' => can_add_photo($m, $u),
         'can_edit' => can_score_match($m, $u),
         'is_owner' => can_edit_owned($m, $u),
     ];

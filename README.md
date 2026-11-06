@@ -13,6 +13,11 @@ Made for Aarush & Aayush.
   when the lead is big enough (your own lead, 200 by default), the 4th-innings target is worked out for you, results
   read "won by an innings and 40 runs" / "won by 3 wickets", and time running out ends it as a draw (1 point each in a
   tournament table). Scorecards show "CSK 1st / DC 1st / CSK 2nd" and the match list shows "120/4 & 88/2".
+- **Match photos & Timeline** - the scorer, team owners and players in the XI add photos from the ground (toss,
+  huddle, that six) with a caption; they are shrunk on the phone and again on the server (max 1280px JPEG, EXIF
+  stripped, ~100-300 KB each, 40 a match) and shown on the match's **📷 Timeline** tab alongside the toss, innings
+  breaks, fifties, hundreds, partnerships, wicket hauls, scorer notes and the result - each photo stamped with the
+  score at that moment. Full-screen viewer, caption edit and delete. Files live in `uploads/matches/`.
 - **Live ball-by-ball scoring** - runs, 4s/6s, wides, no-balls, byes, leg-byes, every dismissal (bowled, caught, lbw,
   run out, stumped, hit wicket, obstructing the field, hit the ball twice, retired out, timed out, retired hurt),
   strike rotation, over changes, bowler limits, unlimited undo, **edit or delete any earlier ball** (later balls are

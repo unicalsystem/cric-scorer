@@ -57,7 +57,7 @@ function avatar_dir(): string {
     if (!is_dir($dir) && !@mkdir($dir, 0755, true)) fail('The server could not create the photos folder (uploads/avatars). Please check folder permissions.');
     // Never let anything in uploads run as code
     $ht = __DIR__ . '/../uploads/.htaccess';
-    if (!is_file($ht)) @file_put_contents($ht, "Options -Indexes\n<FilesMatch \"\\.(php|phtml|phar|pl|py|cgi|sh|html?|svg)$\">\n  Require all denied\n</FilesMatch>\n<IfModule mod_php.c>\n  php_flag engine off\n</IfModule>\n");
+    if (!is_file($ht)) @file_put_contents($ht, "Options -Indexes\n<FilesMatch \"\\.(php|phtml|phar|pl|py|cgi|sh|html?|svg)$\">\n  Require all denied\n</FilesMatch>\n<IfModule mod_php.c>\n  php_flag engine off\n</IfModule>\n<IfModule mod_headers.c>\n  <FilesMatch \"\\.(jpe?g|png|webp)$\">\n    Header set Cache-Control \"public, max-age=2592000\"\n  </FilesMatch>\n</IfModule>\n");
     return $dir;
 }
 

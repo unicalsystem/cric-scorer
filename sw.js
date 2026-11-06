@@ -1,5 +1,5 @@
 /* Cric-Scorer service worker - caches the app shell so it opens instantly like an app */
-const CACHE = 'cric-scorer-v1.20.0';
+const CACHE = 'cric-scorer-v1.21.0';
 const SHELL = ['./manifest.json',
   './assets/icons/icon-192.png', './assets/icons/icon-512.png', './assets/icons/icon-180.png'];
 
@@ -11,7 +11,7 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.pathname.endsWith('api.php') || url.pathname.endsWith('install.php') || /\/m\/\d+\/?$/.test(url.pathname)) return;   // live match pages always come from the network
+  if (e.request.method !== 'GET' || url.pathname.endsWith('api.php') || url.pathname.endsWith('install.php') || /\/m\/\d+\/?$/.test(url.pathname) || url.pathname.includes('/uploads/')) return;   // live match pages and photos always come from the network
   // Network first (always fresh when online), fall back to cache when offline
   e.respondWith(
     fetch(e.request).then(res => {

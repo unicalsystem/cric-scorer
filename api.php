@@ -407,6 +407,14 @@ function handle(string $action, array $in, ?array $u) {
     case 'match_get':
         return match_state(int_in($in, 'id'), $u);
 
+    case 'match_photo_add': case 'match_photo_delete': case 'match_photo_caption': {   // v1.21 match photos
+        $m = load_match(int_in($in, 'id'));
+        if (!can_view_match($m, $u)) fail('This match is private 🔒', 403);
+        if ($action === 'match_photo_add') return match_photo_add($m, $u, $in);
+        if ($action === 'match_photo_caption') return match_photo_caption($m, $u, $in);
+        return match_photo_delete($m, $u, $in);
+    }
+
     case 'match_dls_preview': {
         $m = load_match(int_in($in, 'id'));
         if (!can_view_match($m, $u)) fail('This match is private 🔒', 403);
@@ -429,6 +437,7 @@ function handle(string $action, array $in, ?array $u) {
     case 'match_delete': {
         $m = load_match(int_in($in, 'id'));
         if (!can_edit_owned($m, $u)) fail('Not allowed', 403);
+        match_photos_purge((int)$m['id']);
         q('DELETE FROM matches WHERE id=?', [$m['id']]);
         return ['ok' => true];
     }
