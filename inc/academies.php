@@ -54,7 +54,8 @@ function academies_action(string $action, array $u, array $in) {
             if ($a['team_id']) q('UPDATE teams SET name=? WHERE id=? AND name<>?', [$name, $a['team_id'], $name]);
         } else {
             if (!$u['is_admin'] && (int)val('SELECT COUNT(*) FROM academies WHERE owner_id=?', [$u['id']]) >= 3) fail('You can register up to 3 academies');
-            if (val('SELECT 1 FROM academies WHERE name=? AND COALESCE(city, \'\')=COALESCE(?, \'\')', [$name, $vals[2]])) fail('An academy with that name is already registered in this city');
+            // same name in the same city? (compared in PHP: wrapping a bound value in COALESCE() trips MariaDB 11's collation rules)
+            foreach (rows('SELECT city FROM academies WHERE name=?', [$name]) as $dup) if (mb_strtolower(trim((string)$dup['city'])) === mb_strtolower(trim((string)($vals[2] ?? '')))) fail('An academy with that name is already registered in this city');
             $short = strtoupper(mb_substr(preg_replace('/[^A-Za-z]/', '', $name), 0, 3)) ?: 'ACA';
             q("INSERT INTO teams (name, short_name, color, category, owner_id, share_mode) VALUES (?,?,?,'custom',?,'approved')", [$name, $short, '#0ca678', $u['id']]);
             $teamId = lastId();

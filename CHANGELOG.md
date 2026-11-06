@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.22.1 - 6 November 2026
+- Fix: registering an academy / club failed on MariaDB 11 hosts with "Illegal mix of collations" (the duplicate-name check wrapped the value in COALESCE)
+
 ## 1.22.0 - 6 November 2026
 - Club Leagues: a sports club (registered under More → Academies) can switch on its own **League rules** - player categories by age / gender (e.g. Under 20, 20-50, Mixed with at least 3 women playing), groups that field the teams (towers, blocks…), squad size (e.g. 8 playing + 2 extra), a points scheme (win 50, 2 pts per 10 runs by a batter, 5 pts per wicket - all editable) and "no repeating players" between categories within a group
 - Only members of that club see any of it: the rule sheet is for the club owner, club fields appear on the team / player / tournament forms only for members, and a club tournament can be "members only" so outsiders cannot even see it in the Cups list
