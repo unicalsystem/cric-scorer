@@ -8,13 +8,15 @@ function can_use_team(?array $t, ?array $u): bool {
     if (($t['category'] ?? 'custom') !== 'custom') return true;
     if (!empty($u['is_admin']) || $t['owner_id'] === null || (int)$t['owner_id'] === (int)$u['id']) return true;
     if (($t['share_mode'] ?? 'approved') === 'everyone') return true;
+    if (!empty($t['academy_id']) && val('SELECT 1 FROM academies WHERE id=? AND owner_id=?', [$t['academy_id'], $u['id']])) return true;   // v1.22: the club that runs the league can use its teams
     return (bool)val("SELECT 1 FROM team_access WHERE team_id=? AND user_id=? AND status='allowed'", [$t['id'], $u['id']]);
 }
 /** SQL that is true when the team (alias t) can be used by this player */
 function team_use_sql(array $u): array {
     if (!empty($u['is_admin'])) return ['1=1', []];
     return ["(t.category<>'custom' OR t.owner_id IS NULL OR t.owner_id=? OR t.share_mode='everyone'
-              OR EXISTS (SELECT 1 FROM team_access ta WHERE ta.team_id=t.id AND ta.user_id=? AND ta.status='allowed'))", [$u['id'], $u['id']]];
+              OR EXISTS (SELECT 1 FROM team_access ta WHERE ta.team_id=t.id AND ta.user_id=? AND ta.status='allowed')
+              OR EXISTS (SELECT 1 FROM academies ac WHERE ac.id=t.academy_id AND ac.owner_id=?))", [$u['id'], $u['id'], $u['id']]];
 }
 function require_team_use(int $teamId, array $u): void {
     $t = row('SELECT t.*, o.display_name owner_name FROM teams t LEFT JOIN users o ON o.id=t.owner_id WHERE t.id=?', [$teamId]);

@@ -287,3 +287,8 @@ CREATE TABLE match_photos (
   INDEX (match_id), INDEX (user_id),
   FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- v1.22 club leagues (academies.league_json + kind are added by ensure_schema, which also creates the academies table)
+ALTER TABLE players ADD COLUMN gender CHAR(1) NULL, ADD COLUMN birth_year SMALLINT NULL;
+ALTER TABLE teams ADD COLUMN academy_id INT NULL, ADD COLUMN league_group VARCHAR(60) NULL, ADD COLUMN league_cat VARCHAR(40) NULL, ADD INDEX idx_team_academy (academy_id);
+ALTER TABLE tournaments ADD COLUMN academy_id INT NULL, ADD COLUMN visibility VARCHAR(10) NOT NULL DEFAULT 'public', ADD INDEX idx_tour_academy (academy_id);

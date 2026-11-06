@@ -13,6 +13,12 @@ Made for Aarush & Aayush.
   when the lead is big enough (your own lead, 200 by default), the 4th-innings target is worked out for you, results
   read "won by an innings and 40 runs" / "won by 3 wickets", and time running out ends it as a draw (1 point each in a
   tournament table). Scorecards show "CSK 1st / DC 1st / CSK 2nd" and the match list shows "120/4 & 88/2".
+- **Club Leagues** - a sports club registers under *Academies*, opens **Club league rules** and sets its own categories
+  (age bands, mixed with a minimum number of women), groups (towers / blocks), squad size, points (win, per 10 runs,
+  per wicket) and no-repeat rules. Teams join a club with a group and category, players get gender and birth year,
+  the app checks squads and playing sides against the rules, auto fixtures pair same-category teams of different
+  groups, and the Points tab shows group standings plus per-category tables. Everything is visible only to club
+  members; club tournaments can be hidden from everyone else.
 - **Match photos & Timeline** - the scorer, team owners and players in the XI add photos from the ground (toss,
   huddle, that six) with a caption; they are shrunk on the phone and again on the server (max 1280px JPEG, EXIF
   stripped, ~100-300 KB each, 40 a match) and shown on the match's **📷 Timeline** tab alongside the toss, innings

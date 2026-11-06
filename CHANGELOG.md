@@ -4,6 +4,13 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.22.0 - 6 November 2026
+- Club Leagues: a sports club (registered under More → Academies) can switch on its own **League rules** - player categories by age / gender (e.g. Under 20, 20-50, Mixed with at least 3 women playing), groups that field the teams (towers, blocks…), squad size (e.g. 8 playing + 2 extra), a points scheme (win 50, 2 pts per 10 runs by a batter, 5 pts per wicket - all editable) and "no repeating players" between categories within a group
+- Only members of that club see any of it: the rule sheet is for the club owner, club fields appear on the team / player / tournament forms only for members, and a club tournament can be "members only" so outsiders cannot even see it in the Cups list
+- Teams get a club, group and category; players get gender and birth year (shown only on club teams). The team page checks the squad against the rules (size, age, same player in two teams) and the playing-side picker enforces them (e.g. "needs at least 3 women in the playing 8")
+- Club tournaments: auto fixtures pair teams of the same category from different groups only; matches use the club's playing number; the Points tab shows group standings (all of a group's teams added up) and per-category tables with match / run / wicket points
+- Players, scoring, ordinary tournaments and all other features are untouched
+
 ## 1.21.0 - 6 November 2026
 - Match photos: a new **📷 Timeline** tab on every match (like CricHeroes) where players add photos from the ground - the toss, the huddle, that big six - with an optional caption
 - Who can add: the scorer/creator, either team's owner, or any signed-in player in the playing XI (up to 40 photos a match); the uploader or the scorer can caption or remove a photo

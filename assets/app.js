@@ -1501,7 +1501,7 @@ async function viewTournaments() {
   mount(topbar('Tournaments') + `<div class="content">${sk(3)}</div><button class="fab" aria-label="New tournament" onclick="go('#/tournament/new')">${I.plus}</button>`, 'tournaments');
   const d = await api('tournaments_list');
   mount(topbar('Tournaments') + `<div class="content">${d.tournaments.length ? d.tournaments.map(t => `<div class="card" style="cursor:pointer" onclick="go('#/tournament/${t.id}')">
-      <div class="row"><span style="font-size:30px">🏆</span><div class="grow"><b style="font-size:17px">${esc(t.name)}</b><div class="small muted">${FORMAT[t.format]} · ${esc(t.type_name || 'Custom')} · ${plural(+t.teams, 'team')}</div></div>${stPill(t.state)}</div>
+      <div class="row"><span style="font-size:30px">🏆</span><div class="grow"><b style="font-size:17px">${esc(t.name)}</b><div class="small muted">${t.club_name ? '🏟️ ' + esc(t.club_name) + ' · ' : ''}${FORMAT[t.format]} · ${esc(t.type_name || 'Custom')} · ${plural(+t.teams, 'team')}</div></div>${stPill(t.state)}</div>
       <div class="progress"><i style="width:${t.matches ? Math.round(t.done / t.matches * 100) : 0}%"></i></div>
       <div class="small muted" style="margin-top:6px">${t.done}/${t.matches} matches played${t.start_date ? ' · starts ' + esc(fmtDate(t.start_date, false)) : ''}${t.mine ? '' : ' · by ' + esc(t.owner_name)}</div></div>`).join('')
     : `<div class="card empty"><div class="big">🏆</div>No tournaments yet.<br>Create your own league like the IPL!<br><button class="btn" style="margin-top:12px" onclick="go('#/tournament/new')">Create tournament</button></div>`}</div>

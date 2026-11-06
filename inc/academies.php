@@ -35,7 +35,11 @@ function academies_action(string $action, array $u, array $in) {
         $team = $a['team_id'] ? team_brief($a['team_id']) : null;
         [$vs, $vp] = vis_sql($u);
         $recent = $a['team_id'] ? match_summaries(rows("SELECT * FROM matches WHERE (team1_id=? OR team2_id=?) AND $vs ORDER BY updated_at DESC LIMIT 5", array_merge([$a['team_id'], $a['team_id']], $vp))) : [];
-        return ['academy' => $a, 'students' => $students, 'team' => $team, 'recent' => $recent, 'is_student' => (bool)val('SELECT 1 FROM academy_students WHERE academy_id=? AND user_id=?', [$a['id'], $u['id']])];
+        $cfg = league_of_academy($a['id']);
+        $league = $cfg && ($a['can_edit'] || is_club_member($a['id'], $u)) ? ['name' => $cfg['club_name'], 'categories' => $cfg['categories'], 'groups' => $cfg['groups'], 'squad_size' => $cfg['squad_size'], 'playing' => $cfg['playing'], 'points' => $cfg['points'],
+            'teams' => rows('SELECT id, name, short_name, color, league_group, league_cat, (SELECT COUNT(*) FROM players p WHERE p.team_id=teams.id) players FROM teams WHERE academy_id=? ORDER BY league_group, league_cat, name', [$a['id']]),
+            'tournaments' => rows('SELECT id, name FROM tournaments WHERE academy_id=? ORDER BY created_at DESC', [$a['id']])] : null;
+        return ['academy' => $a, 'students' => $students, 'team' => $team, 'recent' => $recent, 'is_student' => (bool)val('SELECT 1 FROM academy_students WHERE academy_id=? AND user_id=?', [$a['id'], $u['id']]), 'league' => $league, 'has_rules' => (bool)$a['league_json']];
     }
     case 'academy_save': {
         $id = (int)($in['id'] ?? 0);

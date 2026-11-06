@@ -64,6 +64,19 @@ function handle(string $action, array $in, ?array $u) {
     case 'mobile_remove':
         q('UPDATE users SET mobile=NULL, mobile_verified_at=NULL WHERE id=?', [$u['id']]);
         return ['user' => public_user(row('SELECT * FROM users WHERE id=?', [$u['id']]))];
+    case 'academy_league_get': case 'academy_league_save': {                       // v1.22 club league rule sheet (club owner only)
+        $ac = row('SELECT * FROM academies WHERE id=?', [int_in($in, 'id')]);
+        if (!$ac) fail('Club not found', 404);
+        if (!academy_view($ac, $u)['can_edit']) fail('Only the club owner can see the league rules', 403);
+        if ($action === 'academy_league_save') {
+            $cfg = league_clean((array)($in['league'] ?? []));
+            q('UPDATE academies SET league_json=?, kind=? WHERE id=?', [json_encode($cfg), $cfg['enabled'] ? 'club' : 'academy', $ac['id']]);
+        } else {
+            $cfg = $ac['league_json'] ? (json_decode($ac['league_json'], true) ?: league_defaults()) : league_defaults();
+        }
+        $teams = rows('SELECT id, name, short_name, color, league_group, league_cat, (SELECT COUNT(*) FROM players p WHERE p.team_id=teams.id) players FROM teams WHERE academy_id=? ORDER BY league_group, league_cat, name', [$ac['id']]);
+        return ['league' => $cfg + ['defaults' => league_defaults()], 'teams' => $teams, 'club' => ['id' => (int)$ac['id'], 'name' => $ac['name']]];
+    }
     case 'academies_list': case 'academy_get': case 'academy_save': case 'academy_delete': case 'academy_student_add': case 'academy_student_remove':
         return academies_action($action, $u, $in);
     case 'auc_home': case 'auc_create': case 'auc_lookup': case 'auc_join': case 'auc_profile': case 'auc_settings': case 'auc_pool_add': case 'auc_pool_remove':
@@ -197,7 +210,13 @@ function handle(string $action, array $in, ?array $u) {
         $players = rows("SELECT * FROM players WHERE team_id=? ORDER BY FIELD(role,'Batter','Wicket-keeper','All-rounder','Bowler'), name", [$t['id']]);
         [$vs, $vp] = vis_sql($u);
         $recent = match_summaries(rows("SELECT * FROM matches WHERE (team1_id=? OR team2_id=?) AND status IN ('live','completed') AND $vs ORDER BY updated_at DESC LIMIT 5", array_merge([$t['id'], $t['id']], $vp)));
-        return ['team' => $t, 'players' => $players, 'recent' => $recent];
+        $club = null;
+        if (!empty($t['academy_id']) && ($cfg = league_of_academy((int)$t['academy_id']))) {
+            $c = league_cat($cfg, $t['league_cat']);
+            $club = ['id' => $cfg['club_id'], 'name' => $cfg['club_name'], 'group' => $t['league_group'], 'cat' => $c ? $c['name'] : null, 'cat_key' => $t['league_cat'], 'squad_size' => $cfg['squad_size'], 'playing' => $cfg['playing'], 'min_women' => $c ? (int)$c['min_women'] : 0,
+                     'problems' => $c ? league_check_players($cfg, $t, $players, false) : []];
+        }
+        return ['team' => $t, 'players' => $players, 'recent' => $recent, 'club' => $club, 'my_clubs' => user_league_clubs($u)];
     }
 
     case 'team_captain': {                             // team owner (or admin) picks the captain from the squad; empty = no captain
@@ -217,13 +236,26 @@ function handle(string $action, array $in, ?array $u) {
         $color = valid_color(str_in($in, 'color', 10));
         $cap = str_in($in, 'captain', 100) ?: null;
         $ground = str_in($in, 'home_ground', 150) ?: null;
+        // v1.22 club league: a team may belong to a club, in a group and a category (only clubs the user is in)
+        $clubId = nint($in['academy_id'] ?? null); $grp = null; $lcat = null;
+        if ($clubId) {
+            $cfg = league_of_academy($clubId);
+            if (!$cfg || !is_club_member($clubId, $u)) fail('You are not a member of that club');
+            $grp = str_in($in, 'league_group', 60) ?: null; $lcat = str_in($in, 'league_cat', 40) ?: null;
+            if ($grp !== null && $cfg['groups'] && !in_array($grp, $cfg['groups'], true)) fail('Pick one of the club\'s groups');
+            if ($lcat !== null && !league_cat($cfg, $lcat)) fail('Pick one of the club\'s categories');
+            if ($grp && $lcat) {
+                if (val('SELECT 1 FROM teams WHERE academy_id=? AND league_group=? AND league_cat=? AND id<>?', [$clubId, $grp, $lcat, $id])) fail("$grp already has a " . league_cat($cfg, $lcat)['name'] . ' team');
+                if ((int)val('SELECT COUNT(*) FROM teams WHERE academy_id=? AND league_group=? AND id<>?', [$clubId, $grp, $id]) >= (int)$cfg['max_teams_per_group']) fail("$grp already has " . $cfg['max_teams_per_group'] . ' teams');
+            }
+        }
         if ($id) {
             $t = row('SELECT * FROM teams WHERE id=?', [$id]);
             if (!can_edit_team($t, $u)) fail('You cannot edit this team', 403);
-            q('UPDATE teams SET name=?, short_name=?, color=?, captain=?, home_ground=? WHERE id=?', [$name, $short, $color, $cap, $ground, $id]);
+            q('UPDATE teams SET name=?, short_name=?, color=?, captain=?, home_ground=?, academy_id=?, league_group=?, league_cat=? WHERE id=?', [$name, $short, $color, $cap, $ground, $clubId, $grp, $lcat, $id]);
         } else {
             $cat = ($u['is_admin'] && in_array($in['category'] ?? '', ['ipl', 'international'], true)) ? $in['category'] : 'custom';
-            q('INSERT INTO teams (name, short_name, color, category, owner_id, captain, home_ground) VALUES (?,?,?,?,?,?,?)', [$name, $short, $color, $cat, $cat === 'custom' ? $u['id'] : null, $cap, $ground]);
+            q('INSERT INTO teams (name, short_name, color, category, owner_id, captain, home_ground, academy_id, league_group, league_cat) VALUES (?,?,?,?,?,?,?,?,?,?)', [$name, $short, $color, $cat, $cat === 'custom' ? $u['id'] : null, $cap, $ground, $clubId, $grp, $lcat]);
             $id = lastId();
         }
         return ['id' => $id];
@@ -249,12 +281,15 @@ function handle(string $action, array $in, ?array $u) {
         $mobRaw = trim((string)($in['mobile'] ?? ''));
         $mobile = $mobRaw === '' ? null : normalize_mobile($mobRaw);
         if ($mobRaw !== '' && !$mobile) fail('That WhatsApp number does not look right, e.g. 98765 43210');
+        $gender = in_array($in['gender'] ?? '', ['M', 'F', 'O'], true) ? $in['gender'] : null;
+        $by = int_in($in, 'birth_year'); $by = $by >= 1920 && $by <= (int)date('Y') ? $by : null;
         $vals = [$name, $role, str_in($in, 'batting_style', 30) ?: 'Right-hand bat', str_in($in, 'bowling_style', 40) ?: null,
-                 str_in($in, 'country', 50) ?: null, str_in($in, 'jersey_no', 5) ?: null, !empty($in['is_overseas']) ? 1 : 0, $mobile];
+                 str_in($in, 'country', 50) ?: null, str_in($in, 'jersey_no', 5) ?: null, !empty($in['is_overseas']) ? 1 : 0, $mobile, $gender, $by];
         if ($id) {
-            q('UPDATE players SET name=?, role=?, batting_style=?, bowling_style=?, country=?, jersey_no=?, is_overseas=?, mobile=? WHERE id=?', array_merge($vals, [$id]));
+            q('UPDATE players SET name=?, role=?, batting_style=?, bowling_style=?, country=?, jersey_no=?, is_overseas=?, mobile=?, gender=?, birth_year=? WHERE id=?', array_merge($vals, [$id]));
         } else {
-            q('INSERT INTO players (name, role, batting_style, bowling_style, country, jersey_no, is_overseas, mobile, team_id) VALUES (?,?,?,?,?,?,?,?,?)', array_merge($vals, [$teamId]));
+            league_check_squad_add($t);
+            q('INSERT INTO players (name, role, batting_style, bowling_style, country, jersey_no, is_overseas, mobile, gender, birth_year, team_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)', array_merge($vals, [$teamId]));
             $id = lastId();
         }
         $linked = $mobile ? link_player_by_mobile($mobile, $id) : null;
@@ -389,6 +424,7 @@ function handle(string $action, array $in, ?array $u) {
         $date = $date ? date('Y-m-d H:i:s', strtotime($date)) : date('Y-m-d H:i:s');
         $visibility = ($in['visibility'] ?? '') === 'private' ? 'private' : 'public';
         $test = ($in['format'] ?? '') === 'test';
+        if ($tour && ($lcfg = league_of_academy(nint(val('SELECT academy_id FROM tournaments WHERE id=?', [$tour]))))) { $in['players_per_side'] = $lcfg['playing']; $test = false; }   // club league matches use the club's playing number
         $overs = $test ? TEST_OVERS : max(1, min(100, int_in($in, 'overs', 20)));
         q('INSERT INTO matches (owner_id, tournament_id, match_type_id, title, team1_id, team2_id, overs, balls_per_over, players_per_side, max_overs_bowler, last_man_stands, venue, match_date, visibility, powerplay_overs)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
@@ -503,23 +539,25 @@ function handle(string $action, array $in, ?array $u) {
                         (SELECT COUNT(*) FROM matches m WHERE m.tournament_id=t.id AND m.status=\'live\') live
                       FROM tournaments t LEFT JOIN match_types mt ON mt.id=t.match_type_id LEFT JOIN users u ON u.id=t.owner_id
                       ORDER BY t.created_at DESC');
-        foreach ($list as &$t) { $t['mine'] = (int)$t['owner_id'] === (int)$u['id']; $t['state'] = tournament_state($t); }
-        return ['tournaments' => $list];
+        $list = array_values(array_filter($list, fn($t) => can_view_tournament($t, $u)));
+        foreach ($list as &$t) { $t['mine'] = (int)$t['owner_id'] === (int)$u['id']; $t['state'] = tournament_state($t); $t['club_name'] = !empty($t['academy_id']) ? val('SELECT name FROM academies WHERE id=?', [$t['academy_id']]) : null; }
+        return ['tournaments' => $list, 'my_clubs' => user_league_clubs($u)];
     }
 
     case 'tournament_get': {
         $t = row('SELECT t.*, mt.name type_name, mt.overs, mt.balls_per_over, mt.players_per_side, mt.max_overs_bowler, mt.last_man_stands, CASE WHEN u.is_private=1 AND u.id<>' . (int)$u['id'] . ' THEN NULL ELSE u.display_name END owner_name
                   FROM tournaments t LEFT JOIN match_types mt ON mt.id=t.match_type_id LEFT JOIN users u ON u.id=t.owner_id WHERE t.id=?', [int_in($in, 'id')]);
         if (!$t) fail('Tournament not found', 404);
+        if (!can_view_tournament($t, $u)) fail('This tournament is for club members only 🔒', 403);
         $t['can_edit'] = can_edit_owned($t, $u);
-        $teams = rows('SELECT t.id, t.name, t.short_name, t.color, (SELECT COUNT(*) FROM players p WHERE p.team_id=t.id) players FROM tournament_teams tt JOIN teams t ON t.id=tt.team_id WHERE tt.tournament_id=? ORDER BY t.name', [$t['id']]);
+        $teams = rows('SELECT t.id, t.name, t.short_name, t.color, t.league_group, t.league_cat, (SELECT COUNT(*) FROM players p WHERE p.team_id=t.id) players FROM tournament_teams tt JOIN teams t ON t.id=tt.team_id WHERE tt.tournament_id=? ORDER BY t.league_cat, t.league_group, t.name', [$t['id']]);
         [$vs, $vp] = vis_sql($u);
         $matches = match_summaries(rows("SELECT * FROM matches WHERE tournament_id=? AND $vs ORDER BY COALESCE(match_date, created_at), id", array_merge([$t['id']], $vp)));
         $t['matches'] = count($matches);
         $t['done'] = count(array_filter($matches, fn($m) => in_array($m['status'], ['completed', 'abandoned'], true)));
         $t['live'] = count(array_filter($matches, fn($m) => $m['status'] === 'live'));
         $t['state'] = tournament_state($t);
-        return ['tournament' => $t, 'teams' => $teams, 'matches' => $matches, 'points' => points_table((int)$t['id']), 'leaders' => leaderboards((int)$t['id'], 5, $u), 'mvp' => tournament_mvp((int)$t['id'], 10)];
+        return ['tournament' => $t, 'teams' => $teams, 'matches' => $matches, 'points' => points_table((int)$t['id']), 'leaders' => leaderboards((int)$t['id'], 5, $u), 'mvp' => tournament_mvp((int)$t['id'], 10)] + league_tournament_extra($t);
     }
 
     case 'tournament_save': {
@@ -531,14 +569,21 @@ function handle(string $action, array $in, ?array $u) {
         if (count($teams) < 2) fail('Pick at least 2 teams');
         $already = $id ? array_map('intval', array_column(rows('SELECT team_id FROM tournament_teams WHERE tournament_id=?', [$id]), 'team_id')) : [];
         foreach ($teams as $tid) if (!in_array($tid, $already, true)) require_team_use($tid, $u);
-        $vals = [$name, $fmt, nint($in['match_type_id'] ?? null), str_in($in, 'start_date', 10) ?: null, str_in($in, 'end_date', 10) ?: null, str_in($in, 'venue', 150) ?: null];
+        $clubId = nint($in['academy_id'] ?? null); $vis = 'public';
+        if ($clubId) {
+            $cfg = league_of_academy($clubId);
+            if (!$cfg || !is_club_member($clubId, $u)) fail('You are not a member of that club');
+            $vis = ($in['visibility'] ?? '') === 'club' ? 'club' : 'public';
+            foreach ($teams as $tid) { $tt = row('SELECT * FROM teams WHERE id=?', [$tid]); if ($tt && ((int)$tt['academy_id'] !== $clubId || !$tt['league_cat'])) fail($tt['name'] . ' is not set up for ' . $cfg['club_name'] . ' - open the team, tap Edit and pick its group and category'); }
+        }
+        $vals = [$name, $fmt, nint($in['match_type_id'] ?? null), str_in($in, 'start_date', 10) ?: null, str_in($in, 'end_date', 10) ?: null, str_in($in, 'venue', 150) ?: null, $clubId, $vis];
         if ($id) {
             $t = row('SELECT * FROM tournaments WHERE id=?', [$id]);
             if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
-            q('UPDATE tournaments SET name=?, format=?, match_type_id=?, start_date=?, end_date=?, venue=? WHERE id=?', array_merge($vals, [$id]));
+            q('UPDATE tournaments SET name=?, format=?, match_type_id=?, start_date=?, end_date=?, venue=?, academy_id=?, visibility=? WHERE id=?', array_merge($vals, [$id]));
             q('DELETE FROM tournament_teams WHERE tournament_id=?', [$id]);
         } else {
-            q('INSERT INTO tournaments (name, format, match_type_id, start_date, end_date, venue, owner_id) VALUES (?,?,?,?,?,?,?)', array_merge($vals, [$u['id']]));
+            q('INSERT INTO tournaments (name, format, match_type_id, start_date, end_date, venue, academy_id, visibility, owner_id) VALUES (?,?,?,?,?,?,?,?,?)', array_merge($vals, [$u['id']]));
             $id = lastId();
         }
         foreach ($teams as $tid) if (val('SELECT 1 FROM teams WHERE id=?', [$tid])) q('INSERT INTO tournament_teams (tournament_id, team_id) VALUES (?,?)', [$id, $tid]);
@@ -559,7 +604,12 @@ function handle(string $action, array $in, ?array $u) {
         if (val('SELECT 1 FROM matches WHERE tournament_id=? LIMIT 1', [$t['id']])) fail('Fixtures already exist for this tournament');
         $teams = array_map('intval', array_column(rows('SELECT team_id FROM tournament_teams WHERE tournament_id=?', [$t['id']]), 'team_id'));
         $pairs = [];
-        if ($t['format'] === 'knockout') {
+        $cfg = league_of_academy(nint($t['academy_id'] ?? null));
+        if ($cfg) {
+            $pairs = league_fixture_pairs($cfg, $teams);           // club league: same category, different group
+            if (!$pairs) fail('No fixtures possible - teams need a category, and only teams from different groups play each other');
+            $t['players_per_side'] = $cfg['playing'];
+        } elseif ($t['format'] === 'knockout') {
             shuffle($teams);
             for ($i = 0; $i + 1 < count($teams); $i += 2) $pairs[] = [$teams[$i], $teams[$i + 1], 'Round 1 – Match ' . (count($pairs) + 1)];
         } else {

@@ -77,6 +77,7 @@ function set_playing_xi(array $m, array $in): void {
         if (count($ids) > $max) fail("Select at most $max players per team");
         $order = 0;
         $cap = (int)($in['captain'][$tid] ?? $in['captain'][(string)$tid] ?? 0); $wk = (int)($in['keeper'][$tid] ?? $in['keeper'][(string)$tid] ?? 0);
+        league_check_xi($m, $tid, $ids);   // club league rules (age / women / no repeats), only for club tournaments
         foreach ($ids as $pid) {
             if (!val('SELECT 1 FROM players WHERE id=? AND team_id=?', [$pid, $tid])) fail('A selected player does not belong to the team');
             q('INSERT INTO match_players (match_id, team_id, player_id, bat_order, is_captain, is_keeper) VALUES (?,?,?,?,?,?)', [$m['id'], $tid, $pid, ++$order, $pid === $cap ? 1 : 0, $pid === $wk ? 1 : 0]);
