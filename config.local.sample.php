@@ -42,7 +42,7 @@ define('CONTACT_EMAIL', 'privacy@cricscorerapp.com');      // shown on the Priva
 // define('GRIEVANCE_OFFICER', 'Shiva Kaluvakota');
 
 /* ===== 5. One-tap updates (Admin portal → Updates) - works as is for the public GitHub repo ===== */
-// define('UPDATE_REPO', 'kaluvakota/cricscorerapp');
+// define('UPDATE_REPO', 'unicalsystem/cricscorerapp');
 // define('UPDATE_BRANCH', 'main');
 // define('GITHUB_TOKEN', '');                 // only if the repo is made private: a read-only "Contents" token
 

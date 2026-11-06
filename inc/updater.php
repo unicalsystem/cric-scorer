@@ -2,7 +2,7 @@
 /* Cric-Scorer - one-tap updates from GitHub, with a backup and roll back.
    Never touches config.php, config.local.php, install.php, install.lock or uploaded photos. */
 
-defined('UPDATE_REPO')    || define('UPDATE_REPO', 'kaluvakota/cricscorerapp');
+defined('UPDATE_REPO')    || define('UPDATE_REPO', 'unicalsystem/cricscorerapp');
 defined('UPDATE_BRANCH')  || define('UPDATE_BRANCH', 'main');
 defined('GITHUB_TOKEN')   || define('GITHUB_TOKEN', '');        // only needed if the repository is private (read-only token)
 defined('UPDATE_RAW_URL') || define('UPDATE_RAW_URL', 'https://raw.githubusercontent.com/' . UPDATE_REPO . '/' . UPDATE_BRANCH . '/');
