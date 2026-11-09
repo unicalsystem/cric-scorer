@@ -1208,6 +1208,7 @@ function openersSetup() {
   if (nx.swapped) { const t = nx.batting_team_id; nx.batting_team_id = nx.bowling_team_id; nx.bowling_team_id = t; nx.swapped = false; }
   const chips = (list, key, other) => list.map(p => `<button class="chip ${o[key] === p.id ? 'on' : ''}" ${other && o[other] === p.id ? 'disabled' : ''} onclick="S.op['${key}']=${p.id};drawMatch(false)">${roleIcon(p.role)} ${esc(p.name)}</button>`).join('');
   let brk = '';
+  let bt = teamById(nx.batting_team_id), bwt = teamById(nx.bowling_team_id);
   if (st.match.format === 'test' && nx.no > 1) {
     const tot = st.match.totals || {}; const a = tot[nx.batting_team_id] || 0, b = tot[nx.bowling_team_id] || 0;
     const last = st.innings[st.innings.length - 1];
@@ -1219,6 +1220,7 @@ function openersSetup() {
       <div style="margin-top:6px;font-weight:800;color:var(--green)">${line}</div>
       ${nx.no === 3 && nx.can_follow_on ? `<label class="switch" style="margin-top:10px"><span><b>Enforce the follow-on</b><div class="small muted">${esc(teamById(nx.follow_on_team).name)} bat again (lead ≥ ${st.match.follow_on})</div></span><input type="checkbox" ${o.fo ? 'checked' : ''} onchange="S.op.fo=this.checked;S.op.s=S.op.ns=S.op.b=null;drawMatch(false)"><span class="knob"></span></label>` : ''}</div>`;
     if (nx.no === 3 && o.fo) { const t = nx.batting_team_id; nx.batting_team_id = nx.bowling_team_id; nx.bowling_team_id = t; nx.swapped = true; }
+    bt = teamById(nx.batting_team_id); bwt = teamById(nx.bowling_team_id);
   } else if (nx.no === 2) {
     const i1 = st.innings[0];
     brk = `<div class="card" style="text-align:center"><div style="font-size:34px">☕</div><b class="big-num">Innings break</b>
@@ -1227,7 +1229,6 @@ function openersSetup() {
       ${nx.dls ? `<div class="small muted" style="margin-top:4px">Target revised by the DLS method (${nx.overs} overs)</div>` : ''}</div>`;
   }
   const bat = st.xi[nx.batting_team_id], bowl = st.xi[nx.bowling_team_id];
-  const bt = teamById(nx.batting_team_id), bwt = teamById(nx.bowling_team_id);
   const single = st.match.last_man_stands && bat.length === 1;
   return `<div class="content">${brk}<div class="card">
     <div class="row" style="margin-bottom:10px">${badge(bt, 'sm')}<b class="grow">${esc(bt.name)} - opening batters</b></div>

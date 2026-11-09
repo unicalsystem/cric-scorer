@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.23.1 - 9 November 2026
+- Fix: the match screen crashed with "Cannot access 'bt' before initialization" at the innings break (before the 2nd innings openers are picked), so the match could not be continued
+
 ## 1.23.0 - 9 November 2026
 - Quick Toss: a stand-alone coin toss at `#/toss` - type the two team names, pick who calls and what they call, flip a fair coin (crypto random) with a big spinning coin and sound, record bat / bowl, then share the result on WhatsApp. No match, team set-up or even an account needed; team names and the last 10 tosses are remembered on the phone and it works offline
 - Reach it from the Home tile, More → Quick Toss, the landing / login pages, and jump straight to "Score this match" afterwards
