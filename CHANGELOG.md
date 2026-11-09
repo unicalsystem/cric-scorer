@@ -4,6 +4,10 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.23.0 - 9 November 2026
+- Quick Toss: a stand-alone coin toss at `#/toss` - type the two team names, pick who calls and what they call, flip a fair coin (crypto random) with a big spinning coin and sound, record bat / bowl, then share the result on WhatsApp. No match, team set-up or even an account needed; team names and the last 10 tosses are remembered on the phone and it works offline
+- Reach it from the Home tile, More → Quick Toss, the landing / login pages, and jump straight to "Score this match" afterwards
+
 ## 1.22.1 - 6 November 2026
 - Fix: registering an academy / club failed on MariaDB 11 hosts with "Illegal mix of collations" (the duplicate-name check wrapped the value in COALESCE)
 

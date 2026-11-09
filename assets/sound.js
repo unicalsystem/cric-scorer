@@ -117,6 +117,7 @@ const Sound = (() => {
       case 'cheer': crowd(t, 2.4, 0.7); claps(t, 100, 3, 0.45); break;
       case 'win': crowd(t, 5, 1.25); claps(t + 0.2, 240, 5.5, 0.6); dhol(t + 0.3, 24); break;
       case 'correct': tone(t, 880, 0.14, { type: 'triangle', gain: 0.35 }); tone(t + 0.1, 1320, 0.22, { type: 'triangle', gain: 0.35 }); claps(t + 0.15, 18, 0.9, 0.22); break;
+      case 'coin': for (let i = 0; i < 6; i++) tone(t + i * 0.22, 2200 + (i % 2) * 300, 0.09, { type: 'triangle', gain: 0.22 - i * 0.025 }); break;
       case 'wrong': tone(t, 220, 0.18, { type: 'sawtooth', gain: 0.18, to: 180 }); tone(t + 0.16, 160, 0.28, { type: 'sawtooth', gain: 0.18, to: 120 }); break;
     }
   }

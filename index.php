@@ -50,7 +50,7 @@ $jsonld = [ld_app(), ld_organization(),
       <div class="lp-brand"><img src="assets/icons/icon-192.png" alt="Cric-Scorer logo" width="56" height="56"><div><b>Cric-Scorer</b><span>by Aaryush</span></div></div>
       <h1>Free cricket scoring app for kids, families &amp; clubs</h1>
       <p class="lp-sub">Score every ball on your phone, share live scores, run tournaments and learn the game - all free, no download needed.</p>
-      <div class="lp-cta"><a class="lp-btn lime" href="#/register">🏏 Start scoring - it's free</a><a class="lp-btn ghost" href="#/login">Log in</a></div>
+      <div class="lp-cta"><a class="lp-btn lime" href="#/register">🏏 Start scoring - it's free</a><a class="lp-btn ghost" href="#/login">Log in</a><a class="lp-btn ghost" href="#/toss">🪙 Quick Toss</a></div>
       <p class="lp-small">Works on Android, iPhone and computers · Add it to your home screen like an app</p>
     </div>
   </section>
@@ -89,5 +89,6 @@ $jsonld = [ld_app(), ld_organization(),
 <script src="assets/app.js?v=<?= $v ?>"></script>
 <script src="assets/pro.js?v=<?= $v ?>"></script>
 <script src="assets/league.js?v=<?= $v ?>"></script>
+<script src="assets/toss.js?v=<?= $v ?>"></script>
 </body>
 </html>

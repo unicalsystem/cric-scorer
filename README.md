@@ -19,6 +19,8 @@ Made for Aarush & Aayush.
   the app checks squads and playing sides against the rules, auto fixtures pair same-category teams of different
   groups, and the Points tab shows group standings plus per-category tables. Everything is visible only to club
   members; club tournaments can be hidden from everyone else.
+- **Quick Toss** (`#/toss`) - a stand-alone, fair coin toss with team names, who-calls, bat/bowl and WhatsApp
+  share; works without a match or an account and offline.
 - **Match photos & Timeline** - the scorer, team owners and players in the XI add photos from the ground (toss,
   huddle, that six) with a caption; they are shrunk on the phone and again on the server (max 1280px JPEG, EXIF
   stripped, ~100-300 KB each, 40 a match) and shown on the match's **📷 Timeline** tab alongside the toss, innings
