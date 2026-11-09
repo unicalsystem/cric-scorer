@@ -195,7 +195,7 @@ function find_ball(array $m, array $in): array {
 /** Turn a stored ball back into scoring input so it can be replayed */
 function ball_to_input(array $b): array {
     $in = ['runs' => 0, 'extra' => $b['extra_type'], 'wicket' => null, 'shot_type' => $b['shot_type'], 'shot_zone' => $b['shot_zone'],
-           'drop_id' => $b['drop_id'], 'field_id' => $b['field_id'], 'field_runs' => $b['field_runs'], 'fielded_id' => $b['fielded_id'], '_created_at' => $b['created_at']];
+           'drop_id' => $b['drop_id'], 'field_id' => $b['field_id'], 'field_runs' => $b['field_runs'], 'fielded_id' => $b['fielded_id'], 'bouncer' => (int)($b['is_bouncer'] ?? 0), '_created_at' => $b['created_at']];
     switch ($b['extra_type']) {
         case 'wd': $in['runs'] = max(0, (int)$b['extra_runs'] - 1); break;
         case 'b': case 'lb': $in['runs'] = (int)$b['extra_runs']; break;

@@ -380,13 +380,13 @@ function handle(string $action, array $in, ?array $u) {
         if ($name === '') fail('Enter a name');
         $vals = [$name, max(1, min(100, int_in($in, 'overs', 20))), max(1, min(10, int_in($in, 'balls_per_over', 6))),
                  max(1, min(15, int_in($in, 'players_per_side', 11))), max(0, min(50, int_in($in, 'max_overs_bowler', 0))),
-                 !empty($in['last_man_stands']) ? 1 : 0, str_in($in, 'description', 255) ?: null];
+                 !empty($in['last_man_stands']) ? 1 : 0, max(0, min(6, int_in($in, 'bouncers_per_over', 1))), str_in($in, 'description', 255) ?: null];
         if ($id) {
             $t = row('SELECT * FROM match_types WHERE id=?', [$id]);
             if (!$t || ($t['is_system'] && !$u['is_admin']) || (!$t['is_system'] && !can_edit_owned($t, $u))) fail('You cannot edit this match type', 403);
-            q('UPDATE match_types SET name=?, overs=?, balls_per_over=?, players_per_side=?, max_overs_bowler=?, last_man_stands=?, description=? WHERE id=?', array_merge($vals, [$id]));
+            q('UPDATE match_types SET name=?, overs=?, balls_per_over=?, players_per_side=?, max_overs_bowler=?, last_man_stands=?, bouncers_per_over=?, description=? WHERE id=?', array_merge($vals, [$id]));
         } else {
-            q('INSERT INTO match_types (name, overs, balls_per_over, players_per_side, max_overs_bowler, last_man_stands, description, owner_id) VALUES (?,?,?,?,?,?,?,?)', array_merge($vals, [$u['id']]));
+            q('INSERT INTO match_types (name, overs, balls_per_over, players_per_side, max_overs_bowler, last_man_stands, bouncers_per_over, description, owner_id) VALUES (?,?,?,?,?,?,?,?,?)', array_merge($vals, [$u['id']]));
             $id = lastId();
         }
         return ['id' => $id];
@@ -426,12 +426,12 @@ function handle(string $action, array $in, ?array $u) {
         $test = ($in['format'] ?? '') === 'test';
         if ($tour && ($lcfg = league_of_academy(nint(val('SELECT academy_id FROM tournaments WHERE id=?', [$tour]))))) { $in['players_per_side'] = $lcfg['playing']; $test = false; }   // club league matches use the club's playing number
         $overs = $test ? TEST_OVERS : max(1, min(100, int_in($in, 'overs', 20)));
-        q('INSERT INTO matches (owner_id, tournament_id, match_type_id, title, team1_id, team2_id, overs, balls_per_over, players_per_side, max_overs_bowler, last_man_stands, venue, match_date, visibility, powerplay_overs)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
+        q('INSERT INTO matches (owner_id, tournament_id, match_type_id, title, team1_id, team2_id, overs, balls_per_over, players_per_side, max_overs_bowler, last_man_stands, venue, match_date, visibility, powerplay_overs, bouncers_per_over)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
             $u['id'], $tour, nint($in['match_type_id'] ?? null), str_in($in, 'title', 100) ?: null, $t1, $t2,
             $overs, max(1, min(10, int_in($in, 'balls_per_over', 6))),
             max(1, min(15, int_in($in, 'players_per_side', 11))), max(0, min(50, int_in($in, 'max_overs_bowler', 0))),
-            !empty($in['last_man_stands']) ? 1 : 0, str_in($in, 'venue', 150) ?: null, $date, $visibility, max(0, min($overs, int_in($in, 'powerplay_overs', 0)))]);
+            !empty($in['last_man_stands']) ? 1 : 0, str_in($in, 'venue', 150) ?: null, $date, $visibility, max(0, min($overs, int_in($in, 'powerplay_overs', 0))), max(0, min(6, int_in($in, 'bouncers_per_over', 1)))]);
         $mid = lastId();
         if ($test) q('UPDATE matches SET format=?, days=?, follow_on=?, powerplay_overs=0 WHERE id=?', ['test', max(1, min(7, int_in($in, 'days', 5))), max(0, min(500, int_in($in, 'follow_on', 200))), $mid]);
         $bt = (string)($in['ball_type'] ?? ''); $round = str_in($in, 'round_name', 60);
@@ -545,7 +545,7 @@ function handle(string $action, array $in, ?array $u) {
     }
 
     case 'tournament_get': {
-        $t = row('SELECT t.*, mt.name type_name, mt.overs, mt.balls_per_over, mt.players_per_side, mt.max_overs_bowler, mt.last_man_stands, CASE WHEN u.is_private=1 AND u.id<>' . (int)$u['id'] . ' THEN NULL ELSE u.display_name END owner_name
+        $t = row('SELECT t.*, mt.name type_name, mt.overs, mt.balls_per_over, mt.players_per_side, mt.max_overs_bowler, mt.last_man_stands, mt.bouncers_per_over, CASE WHEN u.is_private=1 AND u.id<>' . (int)$u['id'] . ' THEN NULL ELSE u.display_name END owner_name
                   FROM tournaments t LEFT JOIN match_types mt ON mt.id=t.match_type_id LEFT JOIN users u ON u.id=t.owner_id WHERE t.id=?', [int_in($in, 'id')]);
         if (!$t) fail('Tournament not found', 404);
         if (!can_view_tournament($t, $u)) fail('This tournament is for club members only 🔒', 403);
@@ -599,7 +599,7 @@ function handle(string $action, array $in, ?array $u) {
     }
 
     case 'tournament_fixtures': {
-        $t = row('SELECT t.*, mt.overs, mt.balls_per_over, mt.players_per_side, mt.max_overs_bowler, mt.last_man_stands FROM tournaments t LEFT JOIN match_types mt ON mt.id=t.match_type_id WHERE t.id=?', [int_in($in, 'id')]);
+        $t = row('SELECT t.*, mt.overs, mt.balls_per_over, mt.players_per_side, mt.max_overs_bowler, mt.last_man_stands, mt.bouncers_per_over FROM tournaments t LEFT JOIN match_types mt ON mt.id=t.match_type_id WHERE t.id=?', [int_in($in, 'id')]);
         if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
         if (val('SELECT 1 FROM matches WHERE tournament_id=? LIMIT 1', [$t['id']])) fail('Fixtures already exist for this tournament');
         $teams = array_map('intval', array_column(rows('SELECT team_id FROM tournament_teams WHERE tournament_id=?', [$t['id']]), 'team_id'));
@@ -627,9 +627,9 @@ function handle(string $action, array $in, ?array $u) {
         }
         $date = $t['start_date'] ? $t['start_date'] . ' 10:00:00' : date('Y-m-d H:i:s');
         foreach ($pairs as [$a, $b, $title]) {
-            q('INSERT INTO matches (owner_id, tournament_id, match_type_id, title, team1_id, team2_id, overs, balls_per_over, players_per_side, max_overs_bowler, last_man_stands, venue, match_date)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [$t['owner_id'], $t['id'], $t['match_type_id'], $title, $a, $b,
-               $t['overs'] ?? 20, $t['balls_per_over'] ?? 6, $t['players_per_side'] ?? 11, $t['max_overs_bowler'] ?? 0, $t['last_man_stands'] ?? 0, $t['venue'], $date]);
+            q('INSERT INTO matches (owner_id, tournament_id, match_type_id, title, team1_id, team2_id, overs, balls_per_over, players_per_side, max_overs_bowler, last_man_stands, venue, match_date, bouncers_per_over)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [$t['owner_id'], $t['id'], $t['match_type_id'], $title, $a, $b,
+               $t['overs'] ?? 20, $t['balls_per_over'] ?? 6, $t['players_per_side'] ?? 11, $t['max_overs_bowler'] ?? 0, $t['last_man_stands'] ?? 0, $t['venue'], $date, $t['bouncers_per_over'] ?? 1]);
         }
         return ['created' => count($pairs)];
     }

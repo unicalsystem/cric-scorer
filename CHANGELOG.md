@@ -4,6 +4,10 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.24.0 - 9 November 2026
+- Bouncers: a ⬆️ **Bouncer** button on the scoring pad marks the next ball as a bouncer (then tap the runs / extra / OUT as usual). The pad shows "↑ 1/1 this over · next = no-ball"; once the per-over limit is used up the next bouncer is recorded as a **no-ball** automatically (+1 run, ball re-bowled, batter cannot be bowled / caught / lbw). Limit is set per match / match type ("Bouncers allowed per over": default 1, 0 = no limit). Bouncers show a ↑ mark on the ball chips and in the commentary
+- Hat-tricks: after two wickets in two balls the scoring screen shows "🎩 <bowler> is on a HAT-TRICK!" and the commentary says so; the third wicket in three consecutive balls pops **HAT-TRICK!** with confetti (4 in 4 too). Counted across overs - the bowler's next over continues the sequence; wides / no-balls in between neither count nor break it; run outs break it. Bowlers with a hat-trick get a 🎩 on the scorecard
+
 ## 1.23.1 - 9 November 2026
 - Fix: the match screen crashed with "Cannot access 'bt' before initialization" at the innings break (before the 2nd innings openers are picked), so the match could not be continued
 

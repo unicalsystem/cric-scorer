@@ -539,7 +539,8 @@ async function viewMatchNew(tid) {
       <div class="field"><label>Max ov/bowler</label><input class="input" type="number" name="max_overs_bowler" min="0" max="50" value="${t.max_overs_bowler}"></div></div>
       <input type="hidden" name="balls_per_over" value="${t.balls_per_over}"><input type="hidden" name="match_type_id" value="${t.id}">
       <label class="switch"><span><b>Last man stands</b><div class="small muted">Last batter can bat alone</div></span><input type="checkbox" name="last_man_stands" ${t.last_man_stands ? 'checked' : ''}><span class="knob"></span></label>
-      <div class="small muted" style="margin-top:8px">Max overs per bowler: 0 = no limit.</div></div></div>
+      <div class="field" style="margin-top:10px"><label>Bouncers allowed per over</label><select class="input" name="bouncers_per_over">${[0, 1, 2, 3].map(n => `<option value="${n}" ${(t.bouncers_per_over ?? 1) == n ? 'selected' : ''}>${n === 0 ? 'No limit' : n === 1 ? '1 - the 2nd bouncer is a no-ball' : n + ' - the next one is a no-ball'}</option>`).join('')}</select></div>
+      <div class="small muted" style="margin-top:8px">Max overs per bowler: 0 = no limit. Mark a bouncer with the ⬆️ Bouncer button while scoring.</div></div></div>
     <div class="section"><h2>Who can see this match?</h2></div>
     <input type="hidden" name="visibility" value="public">
     <div class="toss-pick vis-pick" style="margin-bottom:4px">
@@ -558,7 +559,7 @@ async function viewMatchNew(tid) {
 App.pickType = id => {
   const t = S.nm.types.find(x => x.id === id); const f = $('form.content');
   f.overs.value = t.overs; f.players_per_side.value = t.players_per_side; f.max_overs_bowler.value = t.max_overs_bowler;
-  f.balls_per_over.value = t.balls_per_over; f.match_type_id.value = t.id; f.last_man_stands.checked = !!t.last_man_stands;
+  f.balls_per_over.value = t.balls_per_over; f.match_type_id.value = t.id; f.last_man_stands.checked = !!t.last_man_stands; if (f.bouncers_per_over) f.bouncers_per_over.value = t.bouncers_per_over ?? 1;
   document.querySelectorAll('#typechips .chip').forEach(c => c.classList.toggle('on', +c.dataset.id === id));
 };
 App.pickFormat = b => {
@@ -591,7 +592,7 @@ App.createMatch = e => {
 async function viewMatch(id) {
   id = +id;
   if (!S.m || S.m.match.id !== id) {
-    S.mTab = 'card'; S.cardInn = null; S.squads = null; S.toss = {}; S.op = {};
+    S.mTab = 'card'; S.cardInn = null; S.squads = null; S.toss = {}; S.op = {}; S.bnc = false;
     mount(topbar('Match', { back: true }) + `<div class="content">${sk(3)}</div>`, S.user ? 'matches' : null);
   }
   S.m = await api('match_get', { id });
@@ -609,14 +610,15 @@ function pname(id) {
   for (const k in S.m.xi) { const p = S.m.xi[k].find(x => x.id === id); if (p) return p.name; }
   return '?';
 }
-function ballChip(label) {
+function ballChip(label0) {
+  const bnc = label0.endsWith('°'); const label = bnc ? label0.slice(0, -1) : label0;
   let c = '';
   if (label.includes('W')) c = 'w';
   else if (label === '4') c = 'b4';
   else if (label === '6') c = 'b6';
   else if (/wd|nb|lb|b|RH/.test(label)) c = 'ex';
   else if (label === '0') c = 'dot';
-  return `<span class="ball ${c}">${label === '0' ? '•' : esc(label)}</span>`;
+  return `<span class="ball ${c}${bnc ? ' bnc' : ''}" ${bnc ? 'title="Bouncer"' : ''}>${label === '0' ? '•' : esc(label)}${bnc ? '<i>↑</i>' : ''}</span>`;
 }
 
 function drawMatch(first) {
@@ -722,6 +724,7 @@ function creasePanel(st, inn) {
       <tr><th>Bowler</th><th>O</th><th>M</th><th>R</th><th>W</th><th>Econ</th></tr>
       ${inn.bowler_id ? `<tr class="bowl"><td>${esc(bw ? bw.name : pname(inn.bowler_id))}</td><td>${bw ? bw.o : '0.0'}</td><td>${bw ? bw.m : 0}</td><td>${bw ? bw.r : 0}</td><td><b>${bw ? bw.w : 0}</b></td><td>${bw ? bw.econ : '0.00'}</td></tr>` : '<tr class="bowl"><td colspan="6" class="muted">New over - choose the bowler</td></tr>'}
     </table>
+    ${bw && bw.streak >= 2 && inn.status === 'live' ? `<div class="hat-banner">🎩 <b>${esc(bw.name)}</b> is on a HAT-TRICK!${bw.streak > 2 ? ` (${bw.streak} in ${bw.streak} - going for ${bw.streak + 1})` : ''}</div>` : ''}
     <div class="over-strip"><span class="lbl">Over ${cur + 1}</span>${lastBallBadge(st, inn)}${balls.length ? balls.map(b => ballChip(b.label)).join('') : '<span class="muted small">No balls yet</span>'}</div>
     <div class="partner"><span>Partnership: <b>${p.runs}</b> (${p.balls})</span><span>${inn.status === 'live' ? (st.match.format === 'test' ? `${inn.overs} overs bowled` : `${inn.max_overs * st.match.balls_per_over - inn.legal_balls} balls left`) : 'Innings over'}</span></div></div>`;
 }
@@ -739,6 +742,7 @@ function scorePad() {
     <button class="ext" onclick="App.extraSheet('wd')">WD</button><button class="ext" onclick="App.extraSheet('nb')">NB</button>
     <button class="ext" onclick="App.extraSheet('b')">BYE</button><button class="ext" onclick="App.extraSheet('lb')">LB</button>
     <button class="undo" onclick="App.undo()">↶ Undo</button><button class="out" onclick="App.wicketSheet(null)">OUT</button></div>
+    <div class="pad-tools"><button class="bnc-btn ${S.bnc ? 'on' : ''}" onclick="App.toggleBouncer()">${S.bnc ? '⬆️ Bouncer ON - tap runs' : '⬆️ Bouncer'}</button>${bouncerInfo()}</div>
     <div class="pad-tools"><button onclick="App.swap()">⇄ Swap ends</button><button onclick="App.bowlerSheet(true)">🔁 Bowler</button>
     <button onclick="App.moreRuns()">5 / 7 runs</button><button onclick="App.retireSheet()">🩹 Retire</button></div>
     <div class="pad-tools"><button onclick="App.readScore()">🎙️ Read score</button><button onclick="App.soundSheet()">${Sound.sfx || Sound.voice ? '🔊' : '🔇'} Sound & voice</button></div>`;
@@ -750,8 +754,12 @@ async function scoreAction(action, data = {}) {
   S.busy = true;
   const before = S.m;
   try {
+    const bncBefore = action === 'match_ball' && S.bnc ? bouncerStats() : null;
+    if (bncBefore) data = { ...data, bouncer: 1 };
     S.m = await api(action, { id: S.m.match.id, ...data });
+    if (action === 'match_ball') S.bnc = false;
     closeSheet();
+    if (bncBefore && bncBefore.limit && bncBefore.n >= bncBefore.limit) { toast(`Bouncer ${bncBefore.n + 1} of the over - NO BALL! +1 run, ball to be re-bowled`, true); Sound.fx('wide'); }
     celebrate(before, S.m, action);
     drawMatch(false);
     if (navigator.vibrate) navigator.vibrate(12);
@@ -760,6 +768,19 @@ async function scoreAction(action, data = {}) {
   finally { S.busy = false; }
 }
 App.ball = (runs, extra = null, wicket = null) => scoreAction('match_ball', { runs, extra, wicket });
+/* Bouncer: arm the toggle, then score the ball as usual; past the per-over limit the server records a no-ball */
+App.toggleBouncer = () => { S.bnc = !S.bnc; drawMatch(false); if (S.bnc) toast('Bouncer armed - now tap the runs, extra or OUT for this ball'); };
+function bouncerStats() {
+  const st = S.m, inn = st.innings.length ? curInn() : null; if (!inn) return null;
+  const bpo = st.match.balls_per_over; const cur = Math.floor(inn.legal_balls / bpo);
+  const n = (inn.timeline || []).filter(b => b.over_no === cur && b.bnc).length;
+  return { n, limit: st.match.bouncers_per_over || 0 };
+}
+function bouncerInfo() {
+  const b = bouncerStats(); if (!b) return '';
+  const over = b.limit && b.n >= b.limit;
+  return `<span class="bnc-info ${over ? 'over' : ''}">↑ ${b.n}${b.limit ? '/' + b.limit : ''} this over${over ? ' · next = no-ball' : ''}</span>`;
+}
 App.swap = () => scoreAction('match_swap');
 App.undo = () => { Sound.stopVoice(); return scoreAction('match_undo').then(() => toast('Last action undone')); };
 App.setBatter = id => scoreAction('match_batter', { player_id: id });
@@ -810,6 +831,14 @@ function announce(before, after) {
       fx = 'dot'; if (Math.random() < 0.6) say.push(Sound.line('dot', d));
     } else {
       fx = 'run'; say.push(Sound.line('run' + b.rb, d) || `${b.rb} runs.`);
+    }
+    // Hat-trick!
+    if (b.ht) {
+      setTimeout(() => { popup(b.ht === 3 ? 'HAT-TRICK!' : `${b.ht} IN ${b.ht}!`, b.bowl, 'ms', '🎩'); Sound.fx('win'); confetti(); }, 1700);
+      say.push(b.ht === 3 ? `Hat-trick! ${b.bowl} takes three wickets in three balls!` : `${b.ht} wickets in ${b.ht} balls for ${b.bowl}! Unbelievable!`);
+    } else if (b.w) {
+      const sb = inn.bowling.find(x => x.name === b.bowl);
+      if (sb && sb.streak === 2 && inn.status === 'live') { say.push(`${b.bowl} is on a hat-trick!`); setTimeout(() => toast(`🎩 ${b.bowl} is on a hat-trick!`), 1800); }
     }
     // Batting milestones
     const nb = inn.batting.find(x => x.name === b.bat), ob = bi && bi.batting.find(x => x.name === b.bat);
@@ -1274,7 +1303,7 @@ function scorecardView(st, inn) {
     return `<tr onclick="go('#/player/${b.id}')"><td><div class="nm">${esc(b.name)}${atCrease && b.id === inn.striker_id ? ' *' : ''}</div><div class="how">${atCrease ? 'batting' : esc(b.how)}</div></td><td><b>${b.r}</b></td><td>${b.b}</td><td>${b.f4}</td><td>${b.f6}</td><td>${b.sr}</td></tr>`;
   }).join('');
   const ex = inn.extras_detail;
-  const bowl = inn.bowling.map(b => `<tr onclick="go('#/player/${b.id}')"><td><div class="nm">${esc(b.name)}</div>${b.wd || b.nb ? `<div class="how">${b.wd ? b.wd + 'wd ' : ''}${b.nb ? b.nb + 'nb' : ''}</div>` : ''}</td><td>${b.o}</td><td>${b.m}</td><td>${b.r}</td><td><b>${b.w}</b></td><td>${b.econ}</td></tr>`).join('');
+  const bowl = inn.bowling.map(b => `<tr onclick="go('#/player/${b.id}')"><td><div class="nm">${esc(b.name)}${b.ht ? ' 🎩' : ''}</div>${b.wd || b.nb ? `<div class="how">${b.wd ? b.wd + 'wd ' : ''}${b.nb ? b.nb + 'nb' : ''}</div>` : ''}</td><td>${b.o}</td><td>${b.m}</td><td>${b.r}</td><td><b>${b.w}</b></td><td>${b.econ}</td></tr>`).join('');
   return `<div class="card flush">
     <div class="inn-head">${badge(bt, 'sm')}<span>${esc(bt.name)}</span><b>${inn.runs}/${inn.wickets} <small style="font-size:14px">(${inn.overs})</small></b></div>
     <table class="tbl"><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr>${bat || '<tr><td colspan="6" class="muted">No batting yet</td></tr>'}
@@ -1667,7 +1696,7 @@ async function viewTypes() {
     <button class="fab" aria-label="New match type" onclick="App.typeForm(0)">${I.plus}</button>`, 'more');
 }
 App.typeForm = id => {
-  const t = S.types.find(x => x.id === id) || { name: '', overs: 8, balls_per_over: 6, players_per_side: 8, max_overs_bowler: 0, last_man_stands: 0, description: '' };
+  const t = S.types.find(x => x.id === id) || { name: '', overs: 8, balls_per_over: 6, players_per_side: 8, max_overs_bowler: 0, last_man_stands: 0, bouncers_per_over: 1, description: '' };
   sheet(`<h3>${id ? 'Edit match type' : 'New match type'}</h3><form onsubmit="App.saveType(event,${id})">
     <div class="field"><label>Name</label><input class="input" name="name" value="${esc(t.name)}" placeholder="e.g. Terrace cricket" required></div>
     <div class="grid3"><div class="field"><label>Overs</label><input class="input" type="number" name="overs" min="1" max="100" value="${t.overs}"></div>
@@ -1675,6 +1704,7 @@ App.typeForm = id => {
     <div class="field"><label>Players</label><input class="input" type="number" name="players_per_side" min="1" max="15" value="${t.players_per_side}"></div></div>
     <div class="field"><label>Max overs per bowler (0 = no limit)</label><input class="input" type="number" name="max_overs_bowler" min="0" max="50" value="${t.max_overs_bowler}"></div>
     <label class="switch" style="margin-bottom:14px"><b>Last man stands</b><input type="checkbox" name="last_man_stands" ${+t.last_man_stands ? 'checked' : ''}><span class="knob"></span></label>
+    <div class="field"><label>Bouncers allowed per over (0 = no limit)</label><input class="input" type="number" name="bouncers_per_over" min="0" max="6" value="${t.bouncers_per_over ?? 1}"></div>
     <button class="btn block">Save</button>${id ? `<button type="button" class="btn light block" style="margin-top:8px;color:var(--red)" onclick="App.deleteType(${id})">Delete</button>` : ''}</form>`);
 };
 App.saveType = (e, id) => { e.preventDefault(); run(async () => { const f = formData(e.target); f.id = id; await api('type_save', f); closeSheet(); toast('Saved'); render(); }, e.submitter); };

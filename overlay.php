@@ -37,7 +37,7 @@ html,body{margin:0;background:transparent;font-family:Nunito,system-ui,sans-seri
 <body><div class="bar <?= $theme === 'light' ? 'light' : '' ?>" id="bar"><div class="brand">Cric-Scorer</div></div>
 <script>
 const ID = <?= $id ?>, esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const chip = l => { let c = ''; if (l.includes('W')) c = 'w'; else if (l === '4') c = 'b4'; else if (l === '6') c = 'b6'; else if (/wd|nb|lb|b|RH|RO|TO/.test(l)) c = 'ex'; return `<span class="ball ${c}">${l === '0' ? '•' : esc(l)}</span>`; };
+const chip = l0 => { const bn = l0.endsWith('°'); const l = bn ? l0.slice(0, -1) : l0; let c = ''; if (l.includes('W')) c = 'w'; else if (l === '4') c = 'b4'; else if (l === '6') c = 'b6'; else if (/wd|nb|lb|b|RH|RO|TO/.test(l)) c = 'ex'; return `<span class="ball ${c}">${l === '0' ? '•' : esc(l)}${bn ? '↑' : ''}</span>`; };
 async function tick() {
   try {
     const r = await fetch('api.php?action=match_get', { method: 'POST', headers: { 'X-Requested-With': 'CricScorer', 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ID }) });

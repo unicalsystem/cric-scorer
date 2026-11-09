@@ -213,6 +213,7 @@ CREATE TABLE balls (
   extra_runs INT NOT NULL DEFAULT 0,
   total_runs INT NOT NULL DEFAULT 0,
   is_legal TINYINT(1) NOT NULL DEFAULT 1,
+  is_bouncer TINYINT(1) NOT NULL DEFAULT 0,
   is_wicket TINYINT(1) NOT NULL DEFAULT 0,
   wicket_type VARCHAR(30) NULL,
   dismissed_id INT NULL,

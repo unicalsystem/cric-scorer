@@ -19,6 +19,8 @@ Made for Aarush & Aayush.
   the app checks squads and playing sides against the rules, auto fixtures pair same-category teams of different
   groups, and the Points tab shows group standings plus per-category tables. Everything is visible only to club
   members; club tournaments can be hidden from everyone else.
+- **Bouncers & hat-tricks** - mark a bouncer on the pad; beyond the per-match limit (default 1 an over) it is
+  recorded as a no-ball automatically. "On a hat-trick" banner and HAT-TRICK celebration, counted across overs.
 - **Quick Toss** (`#/toss`) - a stand-alone, fair coin toss with team names, who-calls, bat/bowl and WhatsApp
   share; works without a match or an account and offline.
 - **Match photos & Timeline** - the scorer, team owners and players in the XI add photos from the ground (toss,

@@ -182,6 +182,15 @@ function score_ball(array $m, array $in): void {
             if ($runs < 1) fail('Byes need at least 1 run');
             $extraRuns = $runs; break;
     }
+    // Bouncer: beyond the per-over limit the umpire calls a no-ball (1 run + the ball is re-bowled)
+    $bouncer = !empty($in['bouncer']) ? 1 : 0; $bouncerNb = false;
+    if ($bouncer) {
+        $bpoB = (int)$m['balls_per_over']; $limit = (int)($m['bouncers_per_over'] ?? 1);
+        $soFar = (int)val('SELECT COUNT(*) FROM balls WHERE innings_id=? AND over_no=? AND is_bouncer=1', [$inn['id'], intdiv((int)$inn['legal_balls'], $bpoB)]);
+        if ($limit > 0 && $soFar >= $limit && $extra !== 'nb') {
+            $bouncerNb = true; $extra = 'nb'; $runsBat = $runs; $extraRuns = 1;   // whatever the batters ran counts off the bat, plus the no-ball
+        }
+    }
     $legal = in_array($extra, ['wd', 'nb'], true) ? 0 : 1;
 
     $s = (int)$inn['striker_id']; $ns = $inn['non_striker_id'] ? (int)$inn['non_striker_id'] : null;
@@ -193,7 +202,7 @@ function score_ball(array $m, array $in): void {
         $nonDelivery = in_array($wType, NON_DELIVERY, true);
         if (!$nonDelivery) {
             if ($extra === 'wd' && !in_array($wType, ['stumped', 'run out', 'hit wicket', 'obstructing the field'], true)) fail('On a wide only stumped, run out, hit wicket or obstructing the field is possible');
-            if ($extra === 'nb' && !in_array($wType, FIELD_WICKETS, true)) fail('On a no-ball only run out, obstructing the field or hit the ball twice is possible');
+            if ($extra === 'nb' && !in_array($wType, FIELD_WICKETS, true)) fail($bouncerNb ? 'That is bouncer no. ' . ($soFar + 1) . ' of the over - a no-ball, so the batter is not out (only run out is possible)' : 'On a no-ball only run out, obstructing the field or hit the ball twice is possible');
             if (in_array($extra, ['b', 'lb'], true) && !in_array($wType, FIELD_WICKETS, true)) fail('With byes only run out, obstructing the field or hit the ball twice is possible');
         }
         if ($wType === 'timed out') {                         // the next batter never arrived: anyone who has not batted yet
@@ -209,7 +218,7 @@ function score_ball(array $m, array $in): void {
         $isW = $wType === 'retired hurt' ? 0 : 1;
         $fielder = nint($w['fielder_id'] ?? null);
         if ($fielder && !in_array($fielder, xi_ids((int)$m['id'], (int)$inn['bowling_team_id']), true)) $fielder = null;
-        if ($nonDelivery) { $runsBat = 0; $extraRuns = 0; $legal = 0; $extra = null; $runs = 0; }
+        if ($nonDelivery) { $runsBat = 0; $extraRuns = 0; $legal = 0; $extra = null; $runs = 0; $bouncer = 0; }
     }
     $det = ball_details_in($m, $inn, $in);
 
@@ -217,9 +226,9 @@ function score_ball(array $m, array $in): void {
     $overNo = intdiv((int)$inn['legal_balls'], $bpo);
     $ballNo = ((int)$inn['legal_balls'] % $bpo) + 1;
     $seq = (int)val('SELECT COALESCE(MAX(seq),0) FROM balls WHERE innings_id=?', [$inn['id']]) + 1;
-    q('INSERT INTO balls (innings_id, seq, over_no, ball_no, batsman_id, non_striker_id, bowler_id, runs_bat, extra_type, extra_runs, total_runs, is_legal, is_wicket, wicket_type, dismissed_id, fielder_id, shot_type, shot_zone, drop_id, field_id, field_runs, fielded_id, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        [$inn['id'], $seq, $overNo, $ballNo, $s, $ns, (int)$inn['bowler_id'], $runsBat, $extra, $extraRuns, $runsBat + $extraRuns, $legal, $isW, $wType, $dismissed, $fielder,
+    q('INSERT INTO balls (innings_id, seq, over_no, ball_no, batsman_id, non_striker_id, bowler_id, runs_bat, extra_type, extra_runs, total_runs, is_legal, is_bouncer, is_wicket, wicket_type, dismissed_id, fielder_id, shot_type, shot_zone, drop_id, field_id, field_runs, fielded_id, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [$inn['id'], $seq, $overNo, $ballNo, $s, $ns, (int)$inn['bowler_id'], $runsBat, $extra, $extraRuns, $runsBat + $extraRuns, $legal, $bouncer, $isW, $wType, $dismissed, $fielder,
          $det['shot_type'], $det['shot_zone'], $det['drop_id'], $det['field_id'], $det['field_runs'], $det['fielded_id'], $in['_created_at'] ?? date('Y-m-d H:i:s')]);
 
     // Strike rotation: odd runs physically run swap ends
@@ -436,6 +445,7 @@ function ball_label(array $b): string {
         default:   $l = (string)(int)$b['runs_bat'];
     }
     if ($b['is_wicket']) $l = ($l === '0' ? '' : $l . '+') . 'W';
+    if (!empty($b['is_bouncer'])) $l .= '°';   // ° marks a bouncer
     return $l;
 }
 
@@ -481,6 +491,7 @@ function ball_desc(array $b, array $n): string {
         if ($fld && $r < 4) $shot .= ", fielded by $fld";
         $d = $b['extra_type'] === 'nb' ? 'no ball, ' . $shot : $shot;
     }
+    if (!empty($b['is_bouncer'])) $d = ($b['extra_type'] === 'nb' ? 'bouncer - over the limit, NO BALL' . ($r ? " + $r off the bat" : '') : 'bouncer, ' . $d);
     if ($b['is_wicket']) $d .= ' - OUT! ' . ($n[(int)$b['dismissed_id']] ?? '?') . ' ' . dismissal_text($b, $n);
     return $head . $d;
 }
@@ -496,9 +507,10 @@ function innings_card(array $m, array $inn, array $names): array {
         $p = (int)$r['player_id'];
         $bat[$p] = ['id' => $p, 'name' => $names[$p] ?? '?', 'r' => 0, 'b' => 0, 'f4' => 0, 'f6' => 0, 'how' => 'not out', 'out' => false];
     }
-    $score = $penalties; $wk = 0; $legal = 0; $overRuns = [];
+    $score = $penalties; $wk = 0; $legal = 0; $overRuns = []; $hatBall = 0;
     $partRuns = 0; $partBalls = 0;
     foreach ($balls as $b) {
+        $hatBall = 0;
         $p = (int)$b['batsman_id'];
         if (!isset($bat[$p])) $bat[$p] = ['id' => $p, 'name' => $names[$p] ?? '?', 'r' => 0, 'b' => 0, 'f4' => 0, 'f6' => 0, 'how' => 'not out', 'out' => false];
         foreach ([(int)$b['batsman_id'], (int)$b['non_striker_id']] as $atCrease) {
@@ -513,7 +525,7 @@ function innings_card(array $m, array $inn, array $names): array {
             if ((int)$b['runs_bat'] === 4) $bat[$p]['f4']++;
             if ((int)$b['runs_bat'] === 6) $bat[$p]['f6']++;
             $bw = (int)$b['bowler_id'];
-            if (!isset($bowl[$bw])) $bowl[$bw] = ['id' => $bw, 'name' => $names[$bw] ?? '?', 'balls' => 0, 'm' => 0, 'r' => 0, 'w' => 0, 'wd' => 0, 'nb' => 0, 'dots' => 0, 'f4' => 0, 'f6' => 0];
+            if (!isset($bowl[$bw])) $bowl[$bw] = ['id' => $bw, 'name' => $names[$bw] ?? '?', 'balls' => 0, 'm' => 0, 'r' => 0, 'w' => 0, 'wd' => 0, 'nb' => 0, 'dots' => 0, 'f4' => 0, 'f6' => 0, 'streak' => 0, 'ht' => 0];
             $conceded = (int)$b['runs_bat'] + (in_array($b['extra_type'], ['wd', 'nb'], true) ? (int)$b['extra_runs'] : 0);
             $bowl[$bw]['balls'] += (int)$b['is_legal'];
             $bowl[$bw]['r'] += $conceded;
@@ -523,6 +535,9 @@ function innings_card(array $m, array $inn, array $names): array {
             if ((int)$b['runs_bat'] === 4) $bowl[$bw]['f4']++;
             if ((int)$b['runs_bat'] === 6) $bowl[$bw]['f6']++;
             if ($b['is_wicket'] && in_array($b['wicket_type'], BOWLER_WICKETS, true)) $bowl[$bw]['w']++;
+            // Hat-trick: wickets to the bowler off consecutive deliveries - overs in between do not matter; wides / no-balls neither count nor break it
+            if ($b['is_wicket'] && in_array($b['wicket_type'], BOWLER_WICKETS, true)) { $bowl[$bw]['streak']++; if ($bowl[$bw]['streak'] >= 3) { $hatBall = $bowl[$bw]['streak']; if ($bowl[$bw]['streak'] === 3) $bowl[$bw]['ht']++; } }
+            elseif ($b['is_legal']) $bowl[$bw]['streak'] = 0;
             $key = $bw . ':' . $b['over_no'];
             $overRuns[$key] = ['c' => ($overRuns[$key]['c'] ?? 0) + $conceded, 'l' => ($overRuns[$key]['l'] ?? 0) + (int)$b['is_legal'], 'bw' => $bw];
             if ($b['extra_type']) $extras[$b['extra_type']] += (int)$b['extra_runs'];
@@ -541,6 +556,7 @@ function innings_card(array $m, array $inn, array $names): array {
         if (!isset($overs[$o])) $overs[$o] = ['over' => $o + 1, 'runs' => 0, 'wkts' => 0, 'balls' => [], 'bowler' => $names[(int)$b['bowler_id']] ?? '?'];
         $overs[$o]['runs'] += (int)$b['total_runs'];
         $overs[$o]['balls'][] = ball_label($b);
+        if (!empty($b['is_bouncer'])) $overs[$o]['bnc'] = ($overs[$o]['bnc'] ?? 0) + 1;
         if ($b['dismissed_id']) {
             if (!isset($bat[(int)$b['dismissed_id']])) $bat[(int)$b['dismissed_id']] = ['id' => (int)$b['dismissed_id'], 'name' => $names[(int)$b['dismissed_id']] ?? '?', 'r' => 0, 'b' => 0, 'f4' => 0, 'f6' => 0, 'how' => 'not out', 'out' => false];
             $bat[(int)$b['dismissed_id']]['how'] = dismissal_text($b, $names);
@@ -556,7 +572,7 @@ function innings_card(array $m, array $inn, array $names): array {
             $partPlayers = array_filter($partPlayers, fn($k) => $k !== (int)$b['dismissed_id'], ARRAY_FILTER_USE_KEY);
         }
         $timeline[] = ['seq' => (int)$b['seq'], 'ov' => $o . '.' . (int)$b['ball_no'], 'over_no' => $o, 'label' => ball_label($b),
-            'w' => (bool)$b['is_wicket'], 'ex' => $b['extra_type'], 'rb' => (int)$b['runs_bat'], 'xr' => (int)$b['extra_runs'], 'desc' => ball_desc($b, $names),
+            'w' => (bool)$b['is_wicket'], 'ex' => $b['extra_type'], 'bnc' => !empty($b['is_bouncer']), 'ht' => $hatBall, 'rb' => (int)$b['runs_bat'], 'xr' => (int)$b['extra_runs'], 'desc' => ball_desc($b, $names) . ($hatBall ? ($hatBall === 3 ? ' 🎩 HAT-TRICK!' : " 🎩 $hatBall in $hatBall!") : ''),
             'bat' => $names[(int)$b['batsman_id']] ?? '', 'bowl' => $names[(int)$b['bowler_id']] ?? '', 'wt' => $b['wicket_type'],
             'out' => $b['dismissed_id'] ? ($names[(int)$b['dismissed_id']] ?? '') : null, 'out_id' => $b['dismissed_id'] ? (int)$b['dismissed_id'] : null,
             'fld' => $b['fielder_id'] ? ($names[(int)$b['fielder_id']] ?? '') : null, 'fld_id' => $b['fielder_id'] ? (int)$b['fielder_id'] : null,
@@ -682,7 +698,7 @@ function match_state(int $matchId, ?array $u): array {
         'match' => [
             'id' => (int)$m['id'], 'title' => $m['title'], 'status' => $m['status'], 'overs' => (int)$m['overs'],
             'balls_per_over' => (int)$m['balls_per_over'], 'players_per_side' => (int)$m['players_per_side'],
-            'max_overs_bowler' => (int)$m['max_overs_bowler'], 'last_man_stands' => (bool)$m['last_man_stands'],
+            'max_overs_bowler' => (int)$m['max_overs_bowler'], 'last_man_stands' => (bool)$m['last_man_stands'], 'bouncers_per_over' => (int)($m['bouncers_per_over'] ?? 1),
             'dls_g50' => (int)$m['dls_g50'], 'result_method' => $m['result_method'],
             'visibility' => $m['visibility'] ?? 'public', 'owner_id' => (int)$m['owner_id'],
             'venue' => $m['venue'], 'match_date' => $m['match_date'],

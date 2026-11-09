@@ -15,6 +15,13 @@ function schema_v122(): void {
     if (!val("SHOW COLUMNS FROM tournaments LIKE 'academy_id'")) db()->exec("ALTER TABLE tournaments ADD COLUMN academy_id INT NULL AFTER venue, ADD COLUMN visibility VARCHAR(10) NOT NULL DEFAULT 'public' AFTER academy_id, ADD INDEX idx_tour_academy (academy_id)");
 }
 
+/** v1.23: bouncers - mark a delivery as a bouncer; beyond the per-over limit it is a no-ball */
+function schema_v123(): void {
+    if (!val("SHOW COLUMNS FROM balls LIKE 'is_bouncer'")) db()->exec("ALTER TABLE balls ADD COLUMN is_bouncer TINYINT(1) NOT NULL DEFAULT 0 AFTER is_legal");
+    if (!val("SHOW COLUMNS FROM match_types LIKE 'bouncers_per_over'")) db()->exec("ALTER TABLE match_types ADD COLUMN bouncers_per_over TINYINT NOT NULL DEFAULT 1 AFTER last_man_stands");
+    if (!val("SHOW COLUMNS FROM matches LIKE 'bouncers_per_over'")) db()->exec("ALTER TABLE matches ADD COLUMN bouncers_per_over TINYINT NOT NULL DEFAULT 1 AFTER last_man_stands");
+}
+
 /** Default rule sheet - what a club sees the first time it opens "League rules" */
 function league_defaults(): array {
     return [
