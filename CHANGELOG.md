@@ -4,6 +4,10 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.25.0 - 11 November 2026
+- Import players: on a team page tap **📥 Import** and paste a list from WhatsApp or Excel (one player per line - numbering, bullets, "Name, bowler, 98765 43210", "Suresh (wk)", "#7" jersey numbers, tabs / CSV columns all understood; M/F and birth year too for club teams) or choose a CSV / text file. A preview shows what was understood; players already in the team are skipped, WhatsApp numbers link the player to their account, club squad limits are respected. Up to 60 at a time
+- Team page buttons are now Add · Pick · Import
+
 ## 1.24.0 - 9 November 2026
 - Bouncers: a ⬆️ **Bouncer** button on the scoring pad marks the next ball as a bouncer (then tap the runs / extra / OUT as usual). The pad shows "↑ 1/1 this over · next = no-ball"; once the per-over limit is used up the next bouncer is recorded as a **no-ball** automatically (+1 run, ball re-bowled, batter cannot be bowled / caught / lbw). Limit is set per match / match type ("Bouncers allowed per over": default 1, 0 = no limit). Bouncers show a ↑ mark on the ball chips and in the commentary
 - Hat-tricks: after two wickets in two balls the scoring screen shows "🎩 <bowler> is on a HAT-TRICK!" and the commentary says so; the third wicket in three consecutive balls pops **HAT-TRICK!** with confetti (4 in 4 too). Counted across overs - the bowler's next over continues the sequence; wides / no-balls in between neither count nor break it; run outs break it. Bowlers with a hat-trick get a 🎩 on the scorecard

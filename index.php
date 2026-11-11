@@ -90,5 +90,6 @@ $jsonld = [ld_app(), ld_organization(),
 <script src="assets/pro.js?v=<?= $v ?>"></script>
 <script src="assets/league.js?v=<?= $v ?>"></script>
 <script src="assets/toss.js?v=<?= $v ?>"></script>
+<script src="assets/import.js?v=<?= $v ?>"></script>
 </body>
 </html>

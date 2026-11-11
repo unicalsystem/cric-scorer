@@ -296,6 +296,39 @@ function handle(string $action, array $in, ?array $u) {
         return ['id' => $id, 'linked_to' => $linked];
     }
 
+    case 'players_import': {   // v1.25: bulk add from a pasted list / CSV
+        $teamId = int_in($in, 'team_id');
+        $t = row('SELECT * FROM teams WHERE id=?', [$teamId]);
+        if (!can_edit_team($t, $u)) fail('You cannot edit players of this team', 403);
+        $rowsIn = is_array($in['rows'] ?? null) ? array_slice($in['rows'], 0, 60) : [];
+        if (!$rowsIn) fail('Nothing to import');
+        $existing = rows('SELECT id, name, mobile FROM players WHERE team_id=?', [$teamId]);
+        $names = []; $mobiles = [];
+        foreach ($existing as $e) { $names[mb_strtolower(trim($e['name']))] = true; if ($e['mobile']) $mobiles[$e['mobile']] = true; }
+        $cfg = (!empty($t['academy_id']) && !empty($t['league_cat'])) ? league_of_academy((int)$t['academy_id']) : null;
+        $count = count($existing); $added = []; $skipped = [];
+        foreach ($rowsIn as $r) {
+            if (!is_array($r)) continue;
+            $name = preg_replace('/\s+/u', ' ', trim((string)($r['name'] ?? '')));
+            if ($name === '' || mb_strlen($name) > 100) continue;
+            $key = mb_strtolower($name);
+            if (isset($names[$key])) { $skipped[] = ['name' => $name, 'reason' => 'already in the team']; continue; }
+            $mobRaw = trim((string)($r['mobile'] ?? '')); $mobile = $mobRaw === '' ? null : normalize_mobile($mobRaw);
+            if ($mobile && isset($mobiles[$mobile])) { $skipped[] = ['name' => $name, 'reason' => 'that WhatsApp number is already in the team']; continue; }
+            if ($cfg && $count >= (int)$cfg['squad_size']) { $skipped[] = ['name' => $name, 'reason' => 'club squad limit of ' . $cfg['squad_size'] . ' reached']; continue; }
+            $role = in_array($r['role'] ?? '', ['Batter', 'Bowler', 'All-rounder', 'Wicket-keeper'], true) ? $r['role'] : 'Batter';
+            $gender = in_array($r['gender'] ?? '', ['M', 'F', 'O'], true) ? $r['gender'] : null;
+            $by = (int)($r['birth_year'] ?? 0); $by = $by >= 1920 && $by <= (int)date('Y') ? $by : null;
+            $jersey = mb_substr(trim((string)($r['jersey_no'] ?? '')), 0, 5) ?: null;
+            $bats = mb_substr(trim((string)($r['batting_style'] ?? '')), 0, 30) ?: 'Right-hand bat';
+            $bowls = mb_substr(trim((string)($r['bowling_style'] ?? '')), 0, 40) ?: null;
+            q('INSERT INTO players (name, role, batting_style, bowling_style, jersey_no, mobile, gender, birth_year, team_id) VALUES (?,?,?,?,?,?,?,?,?)', [$name, $role, $bats, $bowls, $jersey, $mobile, $gender, $by, $teamId]);
+            $pid = lastId(); $count++; $names[$key] = true; if ($mobile) { $mobiles[$mobile] = true; link_player_by_mobile($mobile, $pid); }
+            $added[] = ['id' => $pid, 'name' => $name];
+        }
+        return ['added' => $added, 'skipped' => $skipped];
+    }
+
     case 'player_delete': {
         $p = row('SELECT * FROM players WHERE id=?', [int_in($in, 'id')]);
         if (!$p) fail('Player not found', 404);
