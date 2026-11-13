@@ -12,6 +12,8 @@ const NEWS_FEEDS = [
     ['url' => 'https://www.espncricinfo.com/rss/content/story/feeds/0.xml', 'source' => 'ESPNcricinfo'],
     ['url' => 'https://news.google.com/rss/search?q=cricket+when:2d&hl=en-IN&gl=IN&ceid=IN:en', 'source' => null],   // source per item
 ];
+// The app is used by children: skip distressing stories (deaths, crime, abuse, gambling) - plain word match on the headline
+const NEWS_BLOCK = '/\\b(suicide|suicidal|dies|died|death|dead|killed|kills|murder\\w*|rape\\w*|assault\\w*|harass\\w*|abus\\w*|molest\\w*|arrest\\w*|police|jail\\w*|prison|drug\\w*|betting|gambl\\w*|stabb\\w*|shot dead|accident|crash|funeral|tragedy|tragic)\\b/i';
 const NEWS_TTL = 1200;      // seconds
 const NEWS_KEEP = 25;
 
@@ -70,6 +72,7 @@ function news_fetch(): array {
     $cut = time() - 7 * 86400;                          // nothing older than a week
     foreach ($all as $n) {
         if ($n['ts'] && $n['ts'] < $cut) continue;
+        if (preg_match(NEWS_BLOCK, $n['title'])) continue;
         $k = preg_replace('/[^a-z0-9]+/', '', strtolower($n['title']));
         $k = substr($k, 0, 60);
         if (isset($seen[$k])) continue;
@@ -94,5 +97,6 @@ function cricket_news(int $limit = 20): array {
         if ($items) { $cache = ['at' => time(), 'items' => $items]; @file_put_contents($file, json_encode($cache), LOCK_EX); }
         else { $cache = ['at' => time() - NEWS_TTL + 300, 'items' => $stale['items']]; @file_put_contents($file, json_encode($cache), LOCK_EX); }   // retry in 5 min
     }
-    return ['items' => array_slice($cache['items'] ?? [], 0, max(1, min(NEWS_KEEP, $limit))), 'updated' => (int)($cache['at'] ?? 0)];
+    $items = array_values(array_filter($cache['items'] ?? [], fn($n) => !preg_match(NEWS_BLOCK, (string)$n['title'])));
+    return ['items' => array_slice($items, 0, max(1, min(NEWS_KEEP, $limit))), 'updated' => (int)($cache['at'] ?? 0)];
 }

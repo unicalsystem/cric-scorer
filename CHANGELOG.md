@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.28.1 - 14 November 2026
+- Cricket news is kid-safe: headlines about deaths, crime, abuse, drugs or betting are left out
+
 ## 1.28.0 - 14 November 2026
 - Home: new **🏆 Upcoming tournaments** strip - swipe through tournaments that haven't finished (teams, matches, dates, venue, status); tap one to open it
 - Home: new **📰 Cricket news** - the 4 latest real-world cricket headlines (ESPNcricinfo + Google News, no API key) with source and time; tap to read on the publisher's site, **More** opens a full news page (`#/news`). The server refreshes the headlines at most every 20 minutes and keeps the last good copy if a feed is down
