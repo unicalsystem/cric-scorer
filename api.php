@@ -189,7 +189,7 @@ function handle(string $action, array $in, ?array $u) {
                          (SELECT COUNT(*) FROM matches m WHERE m.tournament_id=t.id AND m.status IN ('completed','abandoned')) done,
                          (SELECT COUNT(*) FROM matches m WHERE m.tournament_id=t.id AND m.status='live') live
                        FROM tournaments t WHERE t.end_date IS NULL OR t.end_date >= CURDATE() - INTERVAL 1 DAY
-                       ORDER BY COALESCE(t.start_date, DATE(t.created_at)) ASC, t.id DESC LIMIT 40");
+                       ORDER BY ABS(DATEDIFF(COALESCE(t.start_date, DATE(t.created_at)), CURDATE())) ASC, t.id DESC LIMIT 40");   // closest to today first
         $tours = array_values(array_filter($tours, fn($t) => can_view_tournament($t, $u) && ($t['state'] = tournament_state($t)) !== 'completed' && ((int)$t['teams'] > 0)));
         foreach ($tours as &$t) $t['state'] = tournament_state($t);
         unset($t);

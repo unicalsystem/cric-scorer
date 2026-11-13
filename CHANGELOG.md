@@ -4,7 +4,8 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
-## 1.28.1 - 14 November 2026
+## 1.28.2 - 14 November 2026
+- Upcoming tournaments on Home are listed closest-to-today first
 - Cricket news is kid-safe: headlines about deaths, crime, abuse, drugs or betting are left out
 
 ## 1.28.0 - 14 November 2026
