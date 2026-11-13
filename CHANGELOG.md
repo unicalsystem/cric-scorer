@@ -4,6 +4,12 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.30.0 - 14 November 2026
+- Tournament **Leaderboard** tab (was Stats): MVP table, most runs, most wickets, highest scores, best bowling figures, most sixes and fours, best strike rate (min 10 balls), best economy (min 2 overs) and most catches
+- New tournament **Awards** tab: Player of the Tournament (most MVP points), Best Batter (most runs), Best Bowler (most wickets) and Most Sixes - shown as "leading so far" and final once every match (and the final, with playoffs) is played
+- Match awards for every finished match, worked out automatically: Player of the Match (now the match MVP, winners get a 10% edge), best batter and best bowler
+- MVP economy bonus now counts from one full over, so short 6-over games rate bowlers fairly
+
 ## 1.29.0 - 14 November 2026
 - Hand scheduled matches to team owners or captains: a tournament's ⋯ menu has **✍️ Assign scorers** - every match that hasn't started goes to the first-named (or second-named) team's captain, or its owner when the captain isn't linked to an account; "Take scoring back" undoes it. They see the match under Up next and can start and score it; you can still score every match yourself
 - A single match's ⋯ → Scorer sheet now lists both teams' owners and captains to pick with one tap (or anyone else by username)

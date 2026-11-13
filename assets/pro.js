@@ -681,8 +681,8 @@ function mvpView(st) {
 }
 App.mvpHelp = () => sheet(`<h3>How MVP points work</h3><div class="sub">Same simple formula for every match, so you can check it yourself.</div>
   <div class="small"><b>Batting</b>: 1 per run, +1 per four, +2 per six, +5 at 30, +10 at 50, +25 at 100; strike-rate bonus (SR − 100) ÷ 10 when 10+ balls faced (max ±10); −2 for a duck.<br><br>
-  <b>Bowling</b>: 20 per wicket, +10 for three, +25 for five, +5 per maiden, +0.5 per dot ball; economy bonus (6 − economy) × 3 when 2+ overs bowled (max ±15).<br><br>
-  <b>Fielding</b>: 8 per catch or run out, 10 per stumping, +1 per run saved, −1 per run given away, −5 per dropped catch.<br><br>Super overs are not counted.</div>`);
+  <b>Bowling</b>: 20 per wicket, +10 for three, +25 for five, +5 per maiden, +0.5 per dot ball; economy bonus (6 − economy) × 3 once a full over is bowled (max ±15).<br><br>
+  <b>Fielding</b>: 8 per catch or run out, 10 per stumping, +1 per run saved, −1 per run given away, −5 per dropped catch.<br><br>Super overs are not counted.<br><br><b>Player of the Match</b> is the match MVP (winning side gets a 10% edge). <b>Player of the Tournament</b> has the most MVP points across the tournament.</div>`);
 function teamsView(st) {
   return [st.team1, st.team2].map(t => `<div class="card flush" style="margin-bottom:12px"><div class="inn-head">${badge(t, 'sm')}<span>${esc(t.name)}</span><b>${(st.xi[t.id] || []).length}</b></div>
     ${(st.xi[t.id] || []).length ? `<div class="list">${st.xi[t.id].map(p => `<div class="item" onclick="go('#/player/${p.id}')"><span class="avatar">${esc(p.name.split(' ').map(w => w[0]).slice(0, 2).join(''))}</span><div class="grow"><div class="t">${esc(p.name)}${p.is_captain ? ' <span class="role-tag">C</span>' : ''}${p.is_keeper ? ' <span class="role-tag">WK</span>' : ''}</div><div class="s">${roleIcon(p.role)} ${esc(p.role)}</div></div></div>`).join('')}</div>` : '<div class="muted small" style="padding:12px 14px">Playing XI not chosen yet.</div>'}</div>`).join('');

@@ -240,7 +240,7 @@ function mvp_points(int $matchId): array {
         foreach ($bowl as $pid => $s) {
             $p = $get($pid); $pts = $s['w'] * 20 + $s['dots'] * 0.5;
             if ($s['w'] >= 5) $pts += 25; elseif ($s['w'] >= 3) $pts += 10;
-            if ($s['balls'] >= 2 * $bpo) $pts += max(-15, min(15, (6 - $s['r'] * $bpo / $s['balls']) * 3));
+            if ($s['balls'] >= $bpo) $pts += max(-15, min(15, (6 - $s['r'] * $bpo / $s['balls']) * 3));   // v1.30: economy counts from one full over (short-format games)
             $P[$p]['bowl'] += $pts; $P[$p]['w'] += $s['w']; $P[$p]['rc'] += $s['r']; $P[$p]['balls'] += $s['balls'];
         }
         foreach ($overs as $o) if ($o['l'] === $bpo && $o['c'] === 0) { $p = $get($o['w']); $P[$p]['bowl'] += 5; }

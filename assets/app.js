@@ -1682,16 +1682,25 @@ async function viewTournament(id) {
   mount(topbar('Tournament', { back: true }) + `<div class="content">${sk(4)}</div>`, 'tournaments');
   const d = await api('tournament_get', { id: +id }); S.tour = d;
   const t = d.tournament;
-  const tabs = [['matches', 'Matches'], ['points', 'Points'], ['leaders', 'Stats'], ['teams', 'Teams']];
+  const tabs = [['matches', 'Matches'], ['points', 'Points'], ['leaders', 'Leaderboard'], ['awards', 'Awards'], ['teams', 'Teams']];
   let body = '';
   if (S.tTab === 'points') {
     body = `<div class="card flush"><table class="tbl"><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>T/NR</th><th>Pts</th><th>NRR</th></tr>
       ${d.points.map((r, i) => `<tr onclick="go('#/team/${r.id}')"><td><div class="row" style="gap:8px"><span class="muted small">${i + 1}</span>${badge(r, 'sm')}<b>${esc(r.short_name)}</b></div></td><td>${r.p}</td><td>${r.w}</td><td>${r.l}</td><td>${r.t + r.nr}</td><td><b>${r.pts}</b></td><td>${r.nrr > 0 ? '+' : ''}${r.nrr.toFixed(3)}</td></tr>`).join('')}</table></div>
       <div class="small muted">Win = 2 pts, tie / no result = 1 pt. Level on points: net run rate (NRR) decides. Playoff matches don't count here.</div>`;
   } else if (S.tTab === 'leaders') {
-    body = leaderBlock('🏏 Most runs', d.leaders.runs, r => r.runs, r => `${r.balls} balls · SR ${r.balls ? (r.runs * 100 / r.balls).toFixed(1) : 0}`)
-      + leaderBlock('🎯 Most wickets', d.leaders.wickets, r => r.wkts, r => `${r.runs} runs · ${Math.floor(r.balls / 6)}.${r.balls % 6} ov`)
-      + leaderBlock('💥 Most sixes', d.leaders.sixes, r => r.sixes, r => `${r.runs} runs`);
+    const L = d.leaders, top = l => (l || []).slice(0, 5), ov = b => `${Math.floor(b / 6)}.${b % 6}`;
+    body = leaderBlock('🏏 Most runs', top(L.runs), r => r.runs, r => `${plural(r.mats, 'match')} · ${r.balls} balls · SR ${r.balls ? (r.runs * 100 / r.balls).toFixed(1) : 0}`)
+      + leaderBlock('🎯 Most wickets', top(L.wickets), r => r.wkts, r => `${r.runs} runs · ${ov(r.balls)} ov · econ ${r.balls ? (r.runs * 6 / r.balls).toFixed(2) : '-'}`)
+      + leaderBlock('🔥 Highest scores', top(L.high_scores), r => r.runs + (r.out_ ? '' : '*'), r => `${r.balls} balls`)
+      + leaderBlock('🌪️ Best bowling', top(L.best_figures), r => `${r.wkts}/${r.runs}`, r => `${ov(r.balls)} overs`)
+      + leaderBlock('💥 Most sixes', top(L.sixes), r => r.sixes, r => `${r.runs} runs`)
+      + leaderBlock('⚡ Most fours', top(L.fours), r => r.fours, r => `${r.runs} runs`)
+      + leaderBlock('🚀 Best strike rate', top(L.strike_rate), r => r.sr, r => `${r.runs} runs off ${r.balls} balls (min 10 balls)`)
+      + leaderBlock('🧊 Best economy', top(L.economy), r => r.econ, r => `${ov(r.balls)} ov · ${r.wkts} wkts (min 2 overs)`)
+      + leaderBlock('🧤 Most catches', top(L.catches), r => r.catches, r => r.runouts ? `${plural(r.runouts, 'run out')}` : 'catches & stumpings');
+  } else if (S.tTab === 'awards') {
+    body = awardsBlock(d);
   } else if (S.tTab === 'teams') {
     body = `<div class="card flush list">${d.teams.map(x => `<div class="item" onclick="go('#/team/${x.id}')">${badge(x)}<div class="grow"><div class="t">${esc(x.name)}</div><div class="s">${plural(+x.players, 'player')}</div></div><span class="chev">${I.chev}</span></div>`).join('')}</div>`;
   } else {
@@ -1709,6 +1718,25 @@ async function viewTournament(id) {
       <div class="progress" style="background:rgba(255,255,255,.15)"><i style="background:var(--lime);width:${t.matches ? Math.round(t.done / t.matches * 100) : 0}%"></i></div>
       <div class="other">${t.done}/${t.matches} matches played</div></div>
     <div class="content"><div class="seg">${tabs.map(([k, l]) => `<button class="${S.tTab === k ? 'on' : ''}" onclick="S.tTab='${k}';render()">${l}</button>`).join('')}</div>${body}</div>`, 'tournaments');
+}
+/* v1.30: tournament awards + per-match awards (POM = match MVP, best batter, best bowler) */
+function awardsBlock(d) {
+  const A = d.awards || {}, ov = b => `${Math.floor(b / 6)}.${b % 6}`;
+  const big = (ic, label, p, line) => p ? `<div class="item" onclick="go('#/player/${p.id || p.pid}')"><span style="font-size:30px">${ic}</span><div class="grow"><div class="small muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.04em">${label}</div><div class="t">${esc(p.name)} ${p.team ? `<span class="role-tag">${esc(p.team)}</span>` : ''}</div><div class="s">${line}</div></div><span class="chev">${I.chev}</span></div>` : '';
+  const head = A.final ? `<div class="card" style="text-align:center;padding:14px;background:linear-gradient(135deg,#fff7df,#ffeec2);color:#5b3d00"><div style="font-size:34px">🏆</div><b style="font-family:var(--display);font-size:20px">Tournament awards</b><div class="small">Final - the tournament is over</div></div>`
+    : `<div class="card" style="padding:10px 14px"><b>🏅 Tournament awards - leading so far</b><div class="small muted">Become final once every match${d.playoffs && d.playoffs.format !== 'none' ? ' and the final' : ''} is played.</div></div>`;
+  const tour = A.player || A.batter || A.bowler ? `<div class="card flush list">
+      ${big('🌟', 'Player of the Tournament', A.player, A.player ? `${A.player.total} MVP pts · ${plural(A.player.mats, 'match')}` : '')}
+      ${big('🏏', 'Best Batter', A.batter, A.batter ? `${A.batter.runs} runs · ${A.batter.balls} balls · SR ${A.batter.balls ? (A.batter.runs * 100 / A.batter.balls).toFixed(1) : 0}` : '')}
+      ${big('🎯', 'Best Bowler', A.bowler, A.bowler ? `${A.bowler.wkts} wickets · ${A.bowler.runs} runs · ${ov(A.bowler.balls)} ov` : '')}
+      ${big('💥', 'Most Sixes', A.sixes, A.sixes ? `${A.sixes.sixes} sixes · ${A.sixes.runs} runs` : '')}</div>` : '<div class="card empty small">Awards appear after the first match is completed.</div>';
+  const fig = (x, kind) => !x ? '-' : kind === 'bowl' ? `${x.w}/${x.rc} (${ov(x.balls)})` : `${x.r} (${x.b})`;
+  const pm = (A.matches || []).map(m => `<div class="card" style="padding:12px 14px" onclick="go('#/match/${m.id}')"><div class="row" style="justify-content:space-between"><b class="small">${esc(m.title || 'Match')}</b><span class="small muted">${m.t1 ? esc(m.t1.short_name) : ''} v ${m.t2 ? esc(m.t2.short_name) : ''}</span></div>
+      ${m.result ? `<div class="small" style="color:var(--pitch);font-weight:700;margin:2px 0 6px">${esc(m.result)}</div>` : ''}
+      <div class="small">⭐ <b>Player of the Match (MVP):</b> ${m.pom ? `${esc(m.pom.name)} <span class="muted">${m.pom.pts} pts</span>` : '-'}</div>
+      <div class="small">🏏 <b>Best batter:</b> ${m.bat ? `${esc(m.bat.name)} <span class="muted">${fig(m.bat, 'bat')}</span>` : '-'}</div>
+      <div class="small">🎯 <b>Best bowler:</b> ${m.bowl ? `${esc(m.bowl.name)} <span class="muted">${fig(m.bowl, 'bowl')}</span>` : '-'}</div></div>`).join('');
+  return head + tour + `<div class="section"><h2>🎖️ Match awards</h2><span class="small muted">worked out when each match ends</span></div>` + (pm || '<div class="card empty small">No completed matches yet.</div>');
 }
 function leaderBlock(title, list, val, sub) {
   return `<div class="section"><h2>${title}</h2></div>` + (list.length ? `<div class="card flush list">${list.map((r, i) => `<div class="item" onclick="go('#/player/${r.pid}')"><span class="rank">${['🥇', '🥈', '🥉'][i] || i + 1}</span>${badge({ short_name: r.team, color: r.color }, 'sm')}

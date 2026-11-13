@@ -628,7 +628,10 @@ function handle(string $action, array $in, ?array $u) {
         $t['done'] = count(array_filter($matches, fn($m) => in_array($m['status'], ['completed', 'abandoned'], true)));
         $t['live'] = count(array_filter($matches, fn($m) => $m['status'] === 'live'));
         $t['state'] = tournament_state($t);
-        return ['tournament' => $t, 'teams' => $teams, 'matches' => $matches, 'points' => points_table((int)$t['id']), 'leaders' => leaderboards((int)$t['id'], 5, $u), 'mvp' => tournament_mvp((int)$t['id'], 10)] + league_tournament_extra($t) + playoff_info($t);
+        $leaders = leaderboards((int)$t['id'], 10, $u); $mvp = tournament_mvp((int)$t['id'], 10);
+        $leaders += tournament_leaderboard_extra((int)$t['id'], $u, 5);                         // v1.30
+        return ['tournament' => $t, 'teams' => $teams, 'matches' => $matches, 'points' => points_table((int)$t['id']), 'leaders' => $leaders, 'mvp' => $mvp,
+                'awards' => tournament_awards($t, $leaders, $mvp, $u)] + league_tournament_extra($t) + playoff_info($t);
     }
 
     case 'tournament_save': {

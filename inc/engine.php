@@ -370,6 +370,14 @@ function finish_match(int $matchId): void {
 
 /** Simple impact score: runs + 25 per wicket + 10 per catch/stumping/run-out, +bonus for winning side */
 function player_of_match(int $matchId, ?int $winner): ?int {
+    // v1.30: Player of the Match = the match MVP (batting + bowling + fielding points), winners get a 10% edge
+    $mvp = function_exists('mvp_points') ? mvp_points($matchId) : [];
+    if ($mvp) {
+        $winnerIds = $winner ? xi_ids($matchId, $winner) : [];
+        $best = null; $bestPts = -INF;
+        foreach ($mvp as $p) { $pts = $p['total'] * (in_array((int)$p['id'], $winnerIds, true) ? 1.1 : 1.0); if ($pts > $bestPts) { $bestPts = $pts; $best = (int)$p['id']; } }
+        if ($best) return $best;
+    }
     $score = [];
     foreach (rows('SELECT b.* FROM balls b JOIN innings i ON i.id=b.innings_id WHERE i.match_id=?', [$matchId]) as $b) {
         $score[$b['batsman_id']] = ($score[$b['batsman_id']] ?? 0) + (int)$b['runs_bat'];
