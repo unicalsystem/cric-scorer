@@ -13,6 +13,7 @@ require_once __DIR__ . '/whatsapp.php';
 require_once __DIR__ . '/photos.php';
 require_once __DIR__ . '/league.php';
 require_once __DIR__ . '/playoffs.php';
+require_once __DIR__ . '/news.php';
 require_once __DIR__ . '/academies.php';
 require_once __DIR__ . '/community.php';
 require_once __DIR__ . '/auction.php';

@@ -4,6 +4,11 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.28.0 - 14 November 2026
+- Home: new **🏆 Upcoming tournaments** strip - swipe through tournaments that haven't finished (teams, matches, dates, venue, status); tap one to open it
+- Home: new **📰 Cricket news** - the 4 latest real-world cricket headlines (ESPNcricinfo + Google News, no API key) with source and time; tap to read on the publisher's site, **More** opens a full news page (`#/news`). The server refreshes the headlines at most every 20 minutes and keeps the last good copy if a feed is down
+- Home: APL Auction and Gully Duel moved down into a **🎮 Games** section above Explore
+
 ## 1.27.0 - 13 November 2026
 - Playoffs: the tournament form's **League + playoffs** format (now the default) lets you choose the playoff format - **IPL style** (Qualifier 1: 1st v 2nd, Eliminator: 3rd v 4th, Qualifier 2: loser of Q1 v winner of the Eliminator, Final - the default), **Semi-finals** (1v4, 2v3) + Final, or **Final only** - with their own overs and max overs per bowler for the qualifiers / semis and for the final (blank = same as the league)
 - After the league, tap **Create playoffs** on the Matches tab (it warns if league games are still unfinished). Winners move on automatically; a playoff that ends level (super over tied too, or no result) sends the higher-placed team through. Club tournaments run separate playoffs per category

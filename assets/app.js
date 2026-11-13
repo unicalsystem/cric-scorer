@@ -146,6 +146,7 @@ const ROUTES = [
   [/^#\/tournament\/(\d+)\/edit$/, viewTournamentForm],
   [/^#\/tournament\/(\d+)$/, viewTournament],
   [/^#\/stats$/, viewStats],
+  [/^#\/news$/, viewNews],
   [/^#\/types$/, viewTypes],
   [/^#\/profile$/, viewProfile],
   [/^#\/more$/, viewMore],
@@ -445,12 +446,15 @@ async function viewHome() {
   const sec = (t, list, more, empty) => `<div class="section"><h2>${t}</h2>${more ? `<a href="${more}">See all</a>` : ''}</div>` + (list.length ? list.map(matchCard).join('') : (empty || ''));
   mount(hero + `<div class="stats-row"><div class="stat"><b>${d.counts.matches}</b><span>My matches</span></div><div class="stat"><b>${d.counts.teams}</b><span>My teams</span></div><div class="stat"><b>${d.counts.tournaments}</b><span>My cups</span></div></div>
     <div class="content">${announcementsHtml()}${install}
-    ${S.user.features && S.user.features.auction ? `<div class="duel-tile apl-tile" onclick="go('#/apl')"><span class="ic">🔨</span><div class="grow"><b>APL Auction</b><span>Aaryush Premier League - bid virtual coins for IPL stars with friends</span></div><span class="go">Play</span></div>` : ''}
-    ${S.user.features && S.user.features.game ? `<div class="duel-tile" onclick="go('#/play')"><span class="ic">🎮</span><div class="grow"><b>Gully Duel</b><span>Bat vs bowl with a friend - or the computer!</span></div><span class="go">Play</span></div>` : ''}
     ${d.live.length ? sec('🔴 Live now', d.live, '#/matches') : ''}
     ${d.upcoming.length ? sec('Up next', d.upcoming) : ''}
+    ${homeTours(d.tournaments || [])}
+    <div id="home-news">${S.newsCache ? newsBlock(S.newsCache.items.slice(0, 4), true) : ''}</div>
     ${d.following && d.following.length ? sec('👥 From players you follow', d.following, '#/matches') : ''}
     ${sec('Recent results', d.recent, '#/matches', `<div class="card empty"><div class="big">🏏</div>No matches yet.<br>Tap <b>New Match</b> to score your first game!</div>`)}
+    ${S.user.features && (S.user.features.auction || S.user.features.game) ? '<div class="section"><h2>🎮 Games</h2></div>' : ''}
+    ${S.user.features && S.user.features.auction ? `<div class="duel-tile apl-tile" onclick="go('#/apl')"><span class="ic">🔨</span><div class="grow"><b>APL Auction</b><span>Aaryush Premier League - bid virtual coins for IPL stars with friends</span></div><span class="go">Play</span></div>` : ''}
+    ${S.user.features && S.user.features.game ? `<div class="duel-tile" onclick="go('#/play')"><span class="ic">🎮</span><div class="grow"><b>Gully Duel</b><span>Bat vs bowl with a friend - or the computer!</span></div><span class="go">Play</span></div>` : ''}
     <div class="section"><h2>Explore</h2></div>
     <div class="tiles">
       <div class="tile" onclick="go('#/teams?c=ipl')"><span class="ic">🏟️</span>IPL Teams</div>
@@ -459,6 +463,43 @@ async function viewHome() {
       <div class="tile" onclick="go('#/stats')"><span class="ic">📊</span>Leaderboard</div>
       <div class="tile" style="grid-column:1/-1;background:linear-gradient(135deg,#fff7df,#ffeec2);color:#5b3d00" onclick="go('#/learn')"><span class="ic" style="background:#fff">🎓</span><div class="grow">Cricket Academy<div class="small" style="font-weight:700;opacity:.8">Lessons, quizzes & your certificate</div></div></div>
     </div></div>`, 'home');
+  App.loadNews(4);
+}
+/* v1.28: tournaments that haven't finished - swipeable cards on Home */
+function homeTours(list) {
+  if (!list.length) return '';
+  return `<div class="section"><h2>🏆 Upcoming tournaments</h2><a href="#/tournaments">See all</a></div>
+    <div class="h-scroll">${list.map(t => `<div class="card tour-card" onclick="go('#/tournament/${t.id}')"><div class="row" style="gap:10px"><span style="font-size:28px">🏆</span><div class="grow" style="min-width:0"><b class="ellipsis" style="display:block">${esc(t.name)}</b><div class="small muted">${plural(+t.teams, 'team')} · ${plural(+t.matches, 'match')}</div></div></div>
+      <div class="small" style="margin-top:8px">📅 ${t.start_date ? esc(fmtDate(t.start_date, false)) : 'Dates to be announced'}${t.end_date && t.end_date !== t.start_date ? ' – ' + esc(fmtDate(t.end_date, false)) : ''}</div>${t.venue ? `<div class="small muted ellipsis">📍 ${esc(t.venue)}</div>` : ''}
+      <div style="margin-top:8px">${stPill(t.state)}</div></div>`).join('')}</div>`;
+}
+/* v1.28: real-world cricket news (server-cached RSS) */
+function newsAgo(ts) {
+  if (!ts) return '';
+  const m = Math.max(1, Math.round((Date.now() / 1000 - ts) / 60));
+  return m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago';
+}
+function newsBlock(items, home) {
+  if (!items || !items.length) return '';
+  const row = n => `<a class="item" href="${esc(n.link)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none">
+      <span class="news-thumb">${n.image ? `<img src="${esc(n.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}🏏</span>
+      <div class="grow" style="min-width:0"><div class="t" style="white-space:normal;line-height:1.25">${esc(n.title)}</div><div class="s">${esc(n.source)}${n.ts ? ' · ' + newsAgo(n.ts) : ''}</div></div><span class="chev">${I.chev}</span></a>`;
+  return (home ? `<div class="section"><h2>📰 Cricket news</h2><a href="#/news">More</a></div>` : '')
+    + `<div class="card flush list">${items.map(row).join('')}</div>`
+    + `<div class="small muted" style="margin:-4px 2px 8px">Headlines from ESPNcricinfo &amp; Google News · tap to read on the publisher's site</div>`;
+}
+App.loadNews = async limit => {
+  try {
+    const d = await api('cricket_news', { limit: 20 }); S.newsCache = d;
+    const box = document.getElementById('home-news'); if (box) box.innerHTML = newsBlock(d.items.slice(0, limit), true);
+  } catch (e) { /* news is a nice-to-have - stay quiet */ }
+};
+async function viewNews() {
+  mount(topbar('Cricket news', { back: true }) + `<div class="content">${S.newsCache ? newsBlock(S.newsCache.items, false) : sk(5)}</div>`, 'home');
+  try {
+    const d = await api('cricket_news', { limit: 25 }); S.newsCache = d;
+    mount(topbar('Cricket news', { back: true, sub: d.updated ? 'Updated ' + newsAgo(d.updated) : '' }) + `<div class="content">${newsBlock(d.items, false) || '<div class="card empty"><div class="big">📰</div>No news right now - try again in a few minutes.</div>'}</div>`, 'home');
+  } catch (e) { toast(e.message || 'Could not load the news', true); }
 }
 /* Announcements from the admin, shown on Home until closed */
 function announcementsHtml() {

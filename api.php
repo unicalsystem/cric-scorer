@@ -166,6 +166,9 @@ function handle(string $action, array $in, ?array $u) {
     }
 
     /* ===== Home ===== */
+    case 'cricket_news':                               // v1.28: real-world headlines (cached RSS)
+        return cricket_news(max(1, min(25, int_in($in, 'limit', 20))));
+
     case 'home': {
         [$vs, $vp] = vis_sql($u);
         $live = match_summaries(rows("SELECT * FROM matches WHERE status='live' AND $vs ORDER BY updated_at DESC LIMIT 10", $vp));
@@ -179,7 +182,18 @@ function handle(string $action, array $in, ?array $u) {
             'tournaments' => (int)val("SELECT COUNT(*) FROM tournaments WHERE owner_id=?", [$u['id']]),
         ];
         $counts += follow_counts((int)$u['id'], $u);
-        return ['live' => $live, 'upcoming' => $mine, 'recent' => $recent, 'following' => $followFeed, 'counts' => $counts, 'announcements' => client_extras($u)['announcements']];
+        // v1.28: tournaments that haven't finished, soonest first
+        $tours = rows("SELECT t.id, t.name, t.format, t.start_date, t.end_date, t.venue, t.owner_id, t.academy_id, t.visibility,
+                         (SELECT COUNT(*) FROM tournament_teams tt WHERE tt.tournament_id=t.id) teams,
+                         (SELECT COUNT(*) FROM matches m WHERE m.tournament_id=t.id) matches,
+                         (SELECT COUNT(*) FROM matches m WHERE m.tournament_id=t.id AND m.status IN ('completed','abandoned')) done,
+                         (SELECT COUNT(*) FROM matches m WHERE m.tournament_id=t.id AND m.status='live') live
+                       FROM tournaments t WHERE t.end_date IS NULL OR t.end_date >= CURDATE() - INTERVAL 1 DAY
+                       ORDER BY COALESCE(t.start_date, DATE(t.created_at)) ASC, t.id DESC LIMIT 40");
+        $tours = array_values(array_filter($tours, fn($t) => can_view_tournament($t, $u) && ($t['state'] = tournament_state($t)) !== 'completed' && ((int)$t['teams'] > 0)));
+        foreach ($tours as &$t) $t['state'] = tournament_state($t);
+        unset($t);
+        return ['live' => $live, 'upcoming' => $mine, 'tournaments' => array_slice($tours, 0, 8), 'recent' => $recent, 'following' => $followFeed, 'counts' => $counts, 'announcements' => client_extras($u)['announcements']];
     }
 
     /* ===== Teams & players ===== */

@@ -4,3 +4,4 @@ uploads/avatars/*
 !uploads/avatars/.gitkeep
 .DS_Store
 *.log
+data/cache/
