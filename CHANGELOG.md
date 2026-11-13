@@ -4,6 +4,10 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.29.0 - 14 November 2026
+- Hand scheduled matches to team owners or captains: a tournament's ⋯ menu has **✍️ Assign scorers** - every match that hasn't started goes to the first-named (or second-named) team's captain, or its owner when the captain isn't linked to an account; "Take scoring back" undoes it. They see the match under Up next and can start and score it; you can still score every match yourself
+- A single match's ⋯ → Scorer sheet now lists both teams' owners and captains to pick with one tap (or anyone else by username)
+
 ## 1.28.2 - 14 November 2026
 - Upcoming tournaments on Home are listed closest-to-today first
 - Cricket news is kid-safe: headlines about deaths, crime, abuse, drugs or betting are left out

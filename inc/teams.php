@@ -80,3 +80,51 @@ function team_access_action(string $action, array $u, array $in) {
 function team_requests_waiting(array $u): int {
     return (int)val("SELECT COUNT(*) FROM team_access ta JOIN teams t ON t.id=ta.team_id WHERE t.owner_id=? AND ta.status='pending'", [$u['id']]);
 }
+
+/* ---------- v1.29: team owners & captains as match scorers ---------- */
+
+/** Accounts that run a team: its owner and (when the captain's player is linked to an account) its captain */
+function team_managers(int $teamId): array {
+    $t = row('SELECT id, short_name, owner_id, captain, category FROM teams WHERE id=?', [$teamId]);
+    if (!$t) return [];
+    $out = [];
+    if ($t['captain']) {
+        $p = row('SELECT id, mobile FROM players WHERE team_id=? AND name=? LIMIT 1', [$t['id'], $t['captain']]);
+        if ($p) {
+            $cu = row('SELECT id, username, display_name FROM users WHERE player_id=? LIMIT 1', [$p['id']])
+               ?: ($p['mobile'] ? row('SELECT id, username, display_name FROM users WHERE mobile=? AND mobile_verified_at IS NOT NULL LIMIT 1', [$p['mobile']]) : null);
+            if ($cu) $out[] = ['id' => (int)$cu['id'], 'username' => $cu['username'], 'display_name' => $cu['display_name'], 'role' => 'captain', 'team' => $t['short_name'], 'team_id' => (int)$t['id']];
+        }
+    }
+    if ($t['category'] === 'custom' && $t['owner_id']) {
+        $ou = row('SELECT id, username, display_name FROM users WHERE id=?', [$t['owner_id']]);
+        if ($ou) $out[] = ['id' => (int)$ou['id'], 'username' => $ou['username'], 'display_name' => $ou['display_name'], 'role' => 'owner', 'team' => $t['short_name'], 'team_id' => (int)$t['id']];
+    }
+    return $out;
+}
+
+/** Owners & captains of both sides, captains first (the people a match creator would hand scoring to) */
+function match_scorer_options(array $m): array {
+    $list = array_merge(team_managers((int)$m['team1_id']), team_managers((int)$m['team2_id']));
+    usort($list, fn($a, $b) => ($a['role'] === 'captain' ? 0 : 1) <=> ($b['role'] === 'captain' ? 0 : 1));
+    return $list;
+}
+
+/** Hand every scheduled match of a tournament to team 1's / team 2's captain (or owner when there is no linked captain) */
+function tournament_assign_scorers(array $t, string $side, array $u): array {
+    $done = 0; $skipped = [];
+    foreach (rows("SELECT * FROM matches WHERE tournament_id=? AND status='scheduled' ORDER BY COALESCE(match_date, created_at), id", [$t['id']]) as $m) {
+        if ($side === 'clear') { if ($m['scorer_id']) { q('UPDATE matches SET scorer_id=NULL WHERE id=?', [$m['id']]); match_log($m, 'Scoring taken back by the creator', $u); $done++; } continue; }
+        $teamId = (int)($side === 'team2' ? $m['team2_id'] : $m['team1_id']);
+        $mg = team_managers($teamId);
+        $pick = null;
+        foreach ($mg as $x) if ($x['role'] === 'captain') { $pick = $x; break; }
+        if (!$pick && $mg) $pick = $mg[count($mg) - 1];
+        if (!$pick || $pick['id'] === (int)$m['owner_id']) { $skipped[] = $m['title'] ?: ('Match ' . $m['id']); continue; }   // nobody, or the creator (who can score anyway)
+        if ((int)$m['scorer_id'] === $pick['id']) { $done++; continue; }
+        q('UPDATE matches SET scorer_id=? WHERE id=?', [$pick['id'], $m['id']]);
+        match_log($m, 'Scoring handed to ' . $pick['display_name'] . ' (' . $pick['team'] . ' ' . $pick['role'] . ')', $u);
+        $done++;
+    }
+    return ['assigned' => $done, 'skipped' => $skipped];
+}

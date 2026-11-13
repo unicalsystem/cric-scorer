@@ -1085,8 +1085,15 @@ App.scorerSheet = () => {
   sheet(`<h3>✍️ Who scores this match?</h3><div class="sub">Only you can score your match. You can also hand scoring to one other player by their username - for example a friend at the ground. You can take it back any time.</div>
     ${m.scorer ? `<div class="card" style="box-shadow:none;border:1px solid var(--line)"><div class="row"><div class="grow"><b>${esc(m.scorer.display_name)}</b><div class="small muted">@${esc(m.scorer.username)} can score this match</div></div>
       <button class="btn sm light" onclick="App.setScorer('')">Take back</button></div></div>` : '<div class="small muted" style="margin-bottom:10px">Nobody else can score it right now.</div>'}
+    ${(S.m.scorer_options || []).length ? `<div class="small muted" style="margin:4px 2px 6px"><b>Team owners & captains</b> - tap to hand scoring over</div><div class="plist">${S.m.scorer_options.map(o => `<button class="pbtn ${m.scorer && +m.scorer.id === o.id ? 'on' : ''}" onclick="App.setScorerId(${o.id})"><span class="chk">${m.scorer && +m.scorer.id === o.id ? '✓' : ''}</span>${esc(o.display_name)} <span class="role-tag">${esc(o.team)} ${o.role === 'captain' ? 'captain' : 'owner'}</span><span class="s">@${esc(o.username)}</span></button>`).join('')}</div>
+      <div class="small muted" style="margin:10px 2px 6px">…or anyone else by username</div>` : ''}
     <form class="row" onsubmit="event.preventDefault();App.setScorer(this.u.value)"><input class="input grow" name="u" placeholder="Username, e.g. aayush" autocapitalize="none" autocomplete="off" required><button class="btn sm">${m.scorer ? 'Change' : 'Allow'}</button></form>`);
 };
+App.setScorerId = id => run(async () => {
+  if (S.m.match.owner_id === id || (S.user && S.user.id === id)) { closeSheet(); return toast("That's you - you can always score your own match"); }
+  const r = await api('match_scorer', { id: S.m.match.id, user_id: id });
+  S.m.match.scorer = r.scorer; closeSheet(); toast(`${r.scorer.display_name} can now score this match ✓`); render();
+});
 App.setScorer = u => run(async () => {
   const r = await api('match_scorer', { id: S.m.match.id, username: String(u || '').trim() });
   S.m.match.scorer = r.scorer; closeSheet(); toast(r.scorer ? `${r.scorer.display_name} can now score this match ✓` : 'Only you can score this match now'); render();
@@ -1716,7 +1723,17 @@ App.fixtures = btn => run(async () => { const r = await api('tournament_fixtures
 App.tourMenu = () => sheet(`<h3>Tournament options</h3><div class="plist">
   <button class="pbtn" onclick="go('#/tournament/${S.tour.tournament.id}/edit')">✏️ Edit tournament & teams</button>
   <button class="pbtn" onclick="go('#/match/new?t=${S.tour.tournament.id}')">➕ Add a match (e.g. Final)</button>
+  <button class="pbtn" onclick="App.scorersSheet()">✍️ Assign scorers <span class="s">hand scheduled matches to team captains / owners</span></button>
   <button class="pbtn" style="color:var(--red)" onclick="App.deleteTour()">🗑️ Delete tournament</button></div>`);
+App.scorersSheet = () => sheet(`<h3>✍️ Assign scorers</h3><div class="sub">Every match that hasn't started yet goes to one team's <b>captain</b> (when the captain's player is linked to an account) or else its <b>owner</b>. They see it under Up next and can start and score it. You can still score every match yourself, and change any single match from its ⋯ menu → Scorer.</div>
+  <div class="plist"><button class="pbtn" onclick="App.assignScorers('team1')">🏠 First-named team <span class="s">e.g. Warriors in "Warriors vs Titans"</span></button>
+  <button class="pbtn" onclick="App.assignScorers('team2')">✈️ Second-named team <span class="s">e.g. Titans in "Warriors vs Titans"</span></button>
+  <button class="pbtn" style="color:var(--red)" onclick="App.assignScorers('clear')">↩️ Take scoring back on all scheduled matches</button></div>`);
+App.assignScorers = side => run(async () => {
+  const r = await api('tournament_scorers', { id: S.tour.tournament.id, side }); closeSheet();
+  if (side === 'clear') return toast(`Scoring taken back on ${plural(r.assigned, 'match')}`);
+  toast(`${plural(r.assigned, 'match')} handed over ✓` + (r.skipped.length ? ` · ${r.skipped.length} skipped (no captain/owner other than you)` : ''), !r.assigned && r.skipped.length);
+});
 App.deleteTour = () => confirmSheet('Delete tournament?', 'The tournament and ALL its matches will be deleted.', 'Delete', () => run(async () => { await api('tournament_delete', { id: S.tour.tournament.id, with_matches: 1 }); closeSheet(); toast('Tournament deleted'); go('#/tournaments'); }));
 
 /* =====================================================================

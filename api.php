@@ -530,6 +530,7 @@ function handle(string $action, array $in, ?array $u) {
         $m = load_match(int_in($in, 'id'));
         if (!can_edit_owned($m, $u)) fail('Only the player who created this match can choose the scorer', 403);
         $un = strtolower(trim((string)($in['username'] ?? '')));
+        if (!empty($in['user_id'])) { $un = (string)val('SELECT username FROM users WHERE id=?', [int_in($in, 'user_id')]); if ($un === '') fail('Player not found'); }   // v1.29: picked from the teams' owners / captains
         if ($un === '') { if ($m['scorer_id']) match_log($m, 'Scoring taken back by the creator', $u); q('UPDATE matches SET scorer_id=NULL WHERE id=?', [$m['id']]); return ['scorer' => null]; }
         $p = row('SELECT id, username, display_name FROM users WHERE username=?', [$un]);
         if (!$p) fail('No player with that exact username');
@@ -705,6 +706,13 @@ function handle(string $action, array $in, ?array $u) {
         }
         if (!empty($t['extra_bowlers'])) q('UPDATE matches SET extra_bowlers=?, extra_overs=? WHERE tournament_id=?', [$t['extra_bowlers'], $t['extra_overs'], $t['id']]);
         return ['created' => count($pairs)];
+    }
+
+    case 'tournament_scorers': {                       // v1.29: hand all scheduled matches to team owners / captains
+        $t = row('SELECT * FROM tournaments WHERE id=?', [int_in($in, 'id')]);
+        if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
+        $side = in_array($in['side'] ?? '', ['team1', 'team2', 'clear'], true) ? $in['side'] : 'team1';
+        return tournament_assign_scorers($t, $side, $u);
     }
 
     case 'tournament_playoffs': {                      // v1.27: create round 1 of the playoffs from the league table
