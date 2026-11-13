@@ -275,8 +275,8 @@ function set_bowler(array $m, array $in): void {
     $bpo = (int)$m['balls_per_over'];
     $startOfOver = (int)$inn['legal_balls'] % $bpo === 0;
     if ($startOfOver && count($xi) > 1 && prev_over_bowler($m, $inn) === $pid) fail('A bowler cannot bowl two overs in a row');
-    $max = (int)$m['max_overs_bowler'];
-    if ($max > 0 && $startOfOver && bowler_balls((int)$inn['id'], $pid) >= $max * $bpo) fail("This bowler has finished their $max overs");
+    $max = bowler_cap($m, innings_bowler_balls((int)$inn['id']), $pid);   // v1.27: "up to X bowlers may bowl Y overs"
+    if ($max > 0 && $startOfOver && bowler_balls((int)$inn['id'], $pid) >= $max * $bpo) fail("This bowler has finished their $max " . ($max === 1 ? 'over' : 'overs') . ((int)($m['extra_bowlers'] ?? 0) ? ' (the bigger quota is already used by ' . (int)$m['extra_bowlers'] . ' bowlers)' : ''));
     q('UPDATE innings SET bowler_id=? WHERE id=?', [$pid, $inn['id']]);
 }
 
@@ -365,6 +365,7 @@ function finish_match(int $matchId): void {
     $pom = player_of_match($matchId, $winner);
     [$bb, $bw] = best_performers($matchId);
     q("UPDATE matches SET status='completed', winner_team_id=?, result_text=?, result_method=?, player_of_match_id=?, best_bat_id=?, best_bowl_id=? WHERE id=?", [$winner, $text, $dls ? 'dls' : null, $pom, $bb, $bw, $matchId]);
+    if (!empty($m['tournament_id']) && ($m['stage'] ?? 'league') !== 'league') playoff_advance((int)$m['tournament_id']);   // v1.27: winner moves on
 }
 
 /** Simple impact score: runs + 25 per wicket + 10 per catch/stumping/run-out, +bonus for winning side */
@@ -698,7 +699,7 @@ function match_state(int $matchId, ?array $u): array {
         'match' => [
             'id' => (int)$m['id'], 'title' => $m['title'], 'status' => $m['status'], 'overs' => (int)$m['overs'],
             'balls_per_over' => (int)$m['balls_per_over'], 'players_per_side' => (int)$m['players_per_side'],
-            'max_overs_bowler' => (int)$m['max_overs_bowler'], 'last_man_stands' => (bool)$m['last_man_stands'], 'bouncers_per_over' => (int)($m['bouncers_per_over'] ?? 1),
+            'max_overs_bowler' => (int)$m['max_overs_bowler'], 'extra_bowlers' => (int)($m['extra_bowlers'] ?? 0), 'extra_overs' => (int)($m['extra_overs'] ?? 0), 'stage' => $m['stage'] ?? 'league', 'last_man_stands' => (bool)$m['last_man_stands'], 'bouncers_per_over' => (int)($m['bouncers_per_over'] ?? 1),
             'dls_g50' => (int)$m['dls_g50'], 'result_method' => $m['result_method'],
             'visibility' => $m['visibility'] ?? 'public', 'owner_id' => (int)$m['owner_id'],
             'venue' => $m['venue'], 'match_date' => $m['match_date'],
@@ -766,7 +767,7 @@ function match_summaries(array $matches): array {
             'owner' => $owners[(int)$m['owner_id']] ?? null, 'visibility' => $m['visibility'] ?? 'public',
             'team1' => $teams[(int)$m['team1_id']] ?? null, 'team2' => $teams[(int)$m['team2_id']] ?? null,
             'score1' => $sc[(int)$m['team1_id']] ?? null, 'score2' => $sc[(int)$m['team2_id']] ?? null,
-            'winner_team_id' => $m['winner_team_id'] ? (int)$m['winner_team_id'] : null,
+            'winner_team_id' => $m['winner_team_id'] ? (int)$m['winner_team_id'] : null, 'stage' => $m['stage'] ?? 'league',
         ];
     }
     return $res;
@@ -779,7 +780,7 @@ function points_table(int $tid): array {
     $tbl = [];
     foreach ($teams as $t) $tbl[(int)$t['id']] = ['id' => (int)$t['id'], 'name' => $t['name'], 'short_name' => $t['short_name'], 'color' => $t['color'],
         'p' => 0, 'w' => 0, 'l' => 0, 't' => 0, 'nr' => 0, 'pts' => 0, 'rf' => 0, 'bf' => 0, 'ra' => 0, 'ba' => 0];
-    foreach (rows("SELECT * FROM matches WHERE tournament_id=? AND status IN ('completed','abandoned')", [$tid]) as $m) {
+    foreach (rows("SELECT * FROM matches WHERE tournament_id=? AND stage='league' AND status IN ('completed','abandoned')", [$tid]) as $m) {   // playoffs never count
         $a = (int)$m['team1_id']; $b = (int)$m['team2_id'];
         if (!isset($tbl[$a]) || !isset($tbl[$b])) continue;
         $tbl[$a]['p']++; $tbl[$b]['p']++;

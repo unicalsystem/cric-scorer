@@ -27,12 +27,12 @@ function league_defaults(): array {
     return [
         'enabled' => false,
         'categories' => [
-            ['key' => 'u20', 'name' => 'Under 20', 'min_age' => null, 'max_age' => 19, 'min_women' => 0],
-            ['key' => 'open', 'name' => '20 - 50', 'min_age' => 20, 'max_age' => 50, 'min_women' => 0],
-            ['key' => 'mixed', 'name' => 'Mixed (men & women)', 'min_age' => null, 'max_age' => null, 'min_women' => 3],
+            ['key' => 'junior', 'name' => 'Junior (19 & under)', 'min_age' => null, 'max_age' => 19, 'min_women' => 0],
+            ['key' => 'open', 'name' => 'Open (20+)', 'min_age' => 20, 'max_age' => null, 'min_women' => 0],
+            ['key' => 'mixed', 'name' => 'Mixed (min 1 woman)', 'min_age' => null, 'max_age' => null, 'min_women' => 1],
         ],
         'squad_size' => 10, 'playing' => 8,
-        'points' => ['win' => 50, 'tie' => 25, 'no_result' => 25, 'per_runs' => 10, 'run_pts' => 2, 'wicket_pts' => 5],
+        'points' => ['win' => 2, 'tie' => 1, 'no_result' => 1, 'per_runs' => 10, 'run_pts' => 0, 'wicket_pts' => 0],
         'wicket_mode' => 'all',             // all = every dismissal while bowling (run outs too); bowler = bowled/caught/lbw/stumped/hit wicket only
         'no_repeat' => [['mixed', 'open']], // category pairs that may not share a player within one group
         'groups' => [],                     // e.g. tower / block / department names; each group fields up to one team per category
@@ -183,7 +183,7 @@ function league_points(int $tid, array $cfg): array {
     foreach ($teams as $t) $tbl[(int)$t['id']] = ['id' => (int)$t['id'], 'name' => $t['name'], 'short_name' => $t['short_name'], 'color' => $t['color'], 'group' => $t['league_group'], 'cat' => $t['league_cat'],
         'p' => 0, 'w' => 0, 'l' => 0, 't' => 0, 'nr' => 0, 'match_pts' => 0, 'runs' => 0, 'run_pts' => 0, 'wkts' => 0, 'wkt_pts' => 0, 'pts' => 0];
     $P = $cfg['points'];
-    foreach (rows("SELECT * FROM matches WHERE tournament_id=? AND status IN ('completed','abandoned')", [$tid]) as $m) {
+    foreach (rows("SELECT * FROM matches WHERE tournament_id=? AND stage='league' AND status IN ('completed','abandoned')", [$tid]) as $m) {   // playoffs never count
         $a = (int)$m['team1_id']; $b = (int)$m['team2_id'];
         if (!isset($tbl[$a]) || !isset($tbl[$b])) continue;
         $tbl[$a]['p']++; $tbl[$b]['p']++;
@@ -203,10 +203,13 @@ function league_points(int $tid, array $cfg): array {
             $tbl[$bw]['wkts'] += $wk; $tbl[$bw]['wkt_pts'] += $wk * $P['wicket_pts'];
         }
     }
-    foreach ($tbl as &$r) $r['pts'] = $r['match_pts'] + $r['run_pts'] + $r['wkt_pts'];
+    $nrr = [];
+    foreach (points_table($tid) as $r) $nrr[(int)$r['id']] = (float)$r['nrr'];
+    foreach ($tbl as $id => &$r) { $r['pts'] = $r['match_pts'] + $r['run_pts'] + $r['wkt_pts']; $r['nrr'] = $nrr[$id] ?? 0.0; }
     unset($r);
     $list = array_values($tbl);
-    usort($list, fn($x, $y) => $y['pts'] <=> $x['pts'] ?: $y['w'] <=> $x['w'] ?: strcmp($x['name'], $y['name']));
+    // v1.27 tie-breakers: points, then net run rate, then wickets taken in league matches
+    usort($list, fn($x, $y) => [$y['pts'], $y['nrr'], $y['wkts']] <=> [$x['pts'], $x['nrr'], $x['wkts']] ?: strcmp($x['name'], $y['name']));
     $groups = [];
     foreach ($list as $r) {
         $g = $r['group'] ?: 'No group';

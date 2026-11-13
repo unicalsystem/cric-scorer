@@ -537,6 +537,7 @@ async function viewMatchNew(tid) {
       <div class="grid3"><div class="field"><label>Overs</label><input class="input" type="number" name="overs" min="1" max="100" value="${t.overs}"></div>
       <div class="field"><label>Players</label><input class="input" type="number" name="players_per_side" min="1" max="15" value="${t.players_per_side}"></div>
       <div class="field"><label>Max ov/bowler</label><input class="input" type="number" name="max_overs_bowler" min="0" max="50" value="${t.max_overs_bowler}"></div></div>
+      <div class="grid2"><div class="field"><label>…but up to (bowlers)</label><input class="input" type="number" name="extra_bowlers" min="0" max="11" placeholder="0" value="${t.extra_bowlers || ''}"></div><div class="field"><label>…may bowl (overs)</label><input class="input" type="number" name="extra_overs" min="0" max="50" placeholder="-" value="${t.extra_overs || ''}"></div></div>
       <input type="hidden" name="balls_per_over" value="${t.balls_per_over}"><input type="hidden" name="match_type_id" value="${t.id}">
       <label class="switch"><span><b>Last man stands</b><div class="small muted">Last batter can bat alone</div></span><input type="checkbox" name="last_man_stands" ${t.last_man_stands ? 'checked' : ''}><span class="knob"></span></label>
       <div class="field" style="margin-top:10px"><label>Bouncers allowed per over</label><select class="input" name="bouncers_per_over">${[0, 1, 2, 3].map(n => `<option value="${n}" ${(t.bouncers_per_over ?? 1) == n ? 'selected' : ''}>${n === 0 ? 'No limit' : n === 1 ? '1 - the 2nd bouncer is a no-ball' : n + ' - the next one is a no-ball'}</option>`).join('')}</select></div>
@@ -558,7 +559,7 @@ async function viewMatchNew(tid) {
 }
 App.pickType = id => {
   const t = S.nm.types.find(x => x.id === id); const f = $('form.content');
-  f.overs.value = t.overs; f.players_per_side.value = t.players_per_side; f.max_overs_bowler.value = t.max_overs_bowler;
+  f.overs.value = t.overs; f.players_per_side.value = t.players_per_side; f.max_overs_bowler.value = t.max_overs_bowler; f.extra_bowlers.value = +t.extra_bowlers || ''; f.extra_overs.value = +t.extra_overs || '';
   f.balls_per_over.value = t.balls_per_over; f.match_type_id.value = t.id; f.last_man_stands.checked = !!t.last_man_stands; if (f.bouncers_per_over) f.bouncers_per_over.value = t.bouncers_per_over ?? 1;
   document.querySelectorAll('#typechips .chip').forEach(c => c.classList.toggle('on', +c.dataset.id === id));
 };
@@ -995,6 +996,15 @@ function batterSheet() {
     <div class="plist">${players.map(p => `<button class="pbtn" onclick="App.setBatter(${p.id})">${roleIcon(p.role)} ${esc(p.name)}<span class="s">${retired.has(p.id) ? 'retired hurt - returning' : esc(p.role)}</span></button>`).join('')}</div>
     <button class="btn light block" onclick="App.undo()">↶ Undo last ball</button>`, { locked: true });
 }
+/* v1.27: "max N overs each, but up to X bowlers may bowl Y" - same rule as bowler_cap() on the server */
+function bowlerCap(m, balls, pid) {
+  const max = m.max_overs_bowler, xb = m.extra_bowlers || 0, xo = m.extra_overs || 0;
+  if (!max || !xb || xo <= max) return max;
+  const lim = max * m.balls_per_over;
+  if ((balls[pid] || 0) > lim) return xo;
+  const used = Object.entries(balls || {}).filter(([id, b]) => +id !== +pid && b > lim).length;
+  return used < xb ? xo : max;
+}
 App.bowlerSheet = (change = false) => {
   const st = S.m, inn = curInn(), m = st.match, bpo = m.balls_per_over;
   const start = inn.legal_balls % bpo === 0;
@@ -1003,13 +1013,13 @@ App.bowlerSheet = (change = false) => {
     const f = inn.bowling.find(b => b.id === p.id);
     let dis = false, why = f ? `${f.o}-${f.m}-${f.r}-${f.w}` : 'yet to bowl';
     if (start && xi.length > 1 && p.id === st.prev_over_bowler) { dis = true; why = 'bowled last over'; }
-    else if (m.max_overs_bowler && start && (st.bowler_balls[p.id] || 0) >= m.max_overs_bowler * bpo) { dis = true; why = 'overs quota done'; }
+    else if (m.max_overs_bowler && start && (st.bowler_balls[p.id] || 0) >= bowlerCap(m, st.bowler_balls, p.id) * bpo) { dis = true; why = 'overs quota done'; }
     if (change && p.id === inn.bowler_id) { dis = true; why = 'bowling now'; }
     return `<button class="pbtn" ${dis ? 'disabled' : ''} onclick="App.setBowler(${p.id})">${roleIcon(p.role)} ${esc(p.name)}<span class="s">${why}</span></button>`;
   });
   const overNo = Math.floor(inn.legal_balls / bpo) + 1;
   sheet(`<h3>${change ? 'Change bowler' : `Over ${overNo} - who bowls? 🎯`}</h3>
-    <div class="sub">${change ? 'Use this if a bowler is injured mid-over.' : 'Figures shown as Overs-Maidens-Runs-Wickets'}${m.max_overs_bowler ? ` · max ${m.max_overs_bowler} overs each` : ''}</div>
+    <div class="sub">${change ? 'Use this if a bowler is injured mid-over.' : 'Figures shown as Overs-Maidens-Runs-Wickets'}${m.max_overs_bowler ? ` · max ${m.max_overs_bowler} over${m.max_overs_bowler === 1 ? '' : 's'} each${m.extra_bowlers ? ` (${m.extra_bowlers} bowlers may bowl ${m.extra_overs})` : ''}` : ''}</div>
     <div class="plist">${list.join('')}</div>${change ? '' : '<button class="btn light block" onclick="App.undo()">↶ Undo last ball</button>'}`, { locked: !change });
 };
 
@@ -1554,7 +1564,19 @@ async function viewPlayer(id) {
 /* =====================================================================
    TOURNAMENTS
    ===================================================================== */
-const FORMAT = { league: 'League (round robin)', knockout: 'Knockout', league_final: 'League + Final' };
+const FORMAT = { league: 'League (round robin)', knockout: 'Knockout', league_final: 'League + playoffs' };
+const PO_FORMAT = { ipl: 'IPL style - Qualifier 1 (1v2), Eliminator (3v4), Qualifier 2, Final', semis: 'Semi-finals (1v4, 2v3) + Final', final: 'Final only (1 v 2)' };
+const STAGE = { q1: 'Qualifier 1', elim: 'Eliminator', q2: 'Qualifier 2', sf1: 'Semi-final 1', sf2: 'Semi-final 2', final: 'Final' };
+function playoffCard(po) {
+  po = po || { format: 'ipl' };
+  const n = (name, v, ph) => `<input class="input" type="number" inputmode="numeric" name="${name}" min="0" max="100" placeholder="${ph}" value="${v ?? ''}">`;
+  return `<div class="card" id="pocard"><b>🏆 Playoffs</b><div class="small muted" style="margin:2px 0 10px">Who goes through from the league table, and how the knockout games are played. Club tournaments run playoffs per category.</div>
+    <div class="field"><label>Playoff format</label><select class="input" name="po_format">${Object.entries(PO_FORMAT).map(([k, l]) => `<option value="${k}" ${po.format === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="grid2"><div class="field"><label>Qualifier / semi overs</label>${n('po_overs', po.po_overs, 'same as league')}</div><div class="field"><label>Max overs a bowler</label>${n('po_max_bowler', po.po_max_bowler, 'same as league')}</div></div>
+    <div class="grid2"><div class="field"><label>Final overs</label>${n('final_overs', po.final_overs, 'same as league')}</div><div class="field"><label>Max overs a bowler</label>${n('final_max_bowler', po.final_max_bowler, 'same as league')}</div></div>
+    <div class="small muted">League table order: points, then net run rate, then wickets taken. A playoff that ends level (tied super over, or no result) sends the higher-placed team through.</div></div>`;
+}
+App.tFormat = v => { const c = $('#pocard'); if (c) c.style.display = v === 'league_final' ? '' : 'none'; };
 const stPill = s => s === 'ongoing' ? '<span class="pill live">Ongoing</span>' : s === 'completed' ? '<span class="pill done">Completed</span>' : '<span class="pill up">Upcoming</span>';
 async function viewTournaments() {
   mount(topbar('Tournaments') + `<div class="content">${sk(3)}</div><button class="fab" aria-label="New tournament" onclick="go('#/tournament/new')">${I.plus}</button>`, 'tournaments');
@@ -1569,23 +1591,25 @@ async function viewTournaments() {
 async function viewTournamentForm(id) {
   mount(topbar(id ? 'Edit Tournament' : 'New Tournament', { back: true }) + `<div class="content">${sk(4)}</div>`, 'tournaments');
   const [ty, tm] = await Promise.all([api('types_list'), api('teams_list')]);
-  let t = { name: '', format: 'league', match_type_id: (ty.types.find(x => x.name === 'T20') || ty.types[0]).id, start_date: new Date().toISOString().slice(0, 10), end_date: '', venue: '' };
+  let t = { name: '', format: 'league_final', playoffs: { format: 'ipl' }, match_type_id: (ty.types.find(x => x.name === 'T20') || ty.types[0]).id, start_date: new Date().toISOString().slice(0, 10), end_date: '', venue: '' };
   S.tsel = new Set();
-  if (id) { const d = await api('tournament_get', { id: +id }); t = d.tournament; if (!t.can_edit) return go('#/tournament/' + id); d.teams.forEach(x => S.tsel.add(+x.id)); }
+  if (id) { const d = await api('tournament_get', { id: +id }); t = d.tournament; t.playoffs = d.playoffs; if (!t.can_edit) return go('#/tournament/' + id); d.teams.forEach(x => S.tsel.add(+x.id)); }
   S.tteams = tm.teams;
   mount(topbar(id ? 'Edit Tournament' : 'New Tournament', { back: true }) + `<form class="content" onsubmit="App.saveTournament(event,${id || 0})">
     <div class="card">
       <div class="field"><label>Tournament name</label><input class="input" name="name" value="${esc(t.name)}" placeholder="e.g. Diwali Premier League" required></div>
-      <div class="field"><label>Format</label><select class="input" name="format">${Object.entries(FORMAT).map(([k, l]) => `<option value="${k}" ${t.format === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="field"><label>Format</label><select class="input" name="format" onchange="App.tFormat(this.value)">${Object.entries(FORMAT).map(([k, l]) => `<option value="${k}" ${t.format === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="field"><label>Match type</label><select class="input" name="match_type_id">${ty.types.map(x => `<option value="${x.id}" ${+t.match_type_id === x.id ? 'selected' : ''}>${esc(x.name)} - ${x.overs} overs, ${x.players_per_side} a side</option>`).join('')}</select></div>
       <div class="grid2"><div class="field"><label>Start date</label><input class="input" type="date" name="start_date" value="${esc(t.start_date || '')}"></div>
       <div class="field"><label>End date</label><input class="input" type="date" name="end_date" value="${esc(t.end_date || '')}"></div></div>
       <div class="field"><label>Venue</label><input class="input" name="venue" value="${esc(t.venue || '')}" placeholder="optional"></div>
     </div>
+    ${playoffCard(t.playoffs && t.playoffs.format !== 'none' ? t.playoffs : null)}
     <div class="section"><h2>Teams</h2><span class="small muted" id="tcount">${S.tsel.size} selected</span></div>
     <div class="search">${I.search}<input class="input" placeholder="Search teams" oninput="App.filterList(this.value)"></div>
     <div class="plist">${tm.teams.map(x => { const locked = x.can_use === false && !S.tsel.has(x.id); return `<button type="button" class="pbtn ${S.tsel.has(x.id) ? 'on' : ''} ${locked ? 'locked' : ''}" data-q="${esc((x.name + ' ' + x.short_name + ' ' + x.category).toLowerCase())}" data-tid="${x.id}" onclick="${locked ? `App.lockedTeam(${x.id})` : `App.tToggle(${x.id},this)`}"><span class="chk">${locked ? '🔒' : S.tsel.has(x.id) ? '✓' : ''}</span>${badge(x, 'sm')} ${esc(x.name)}<span class="s">${locked ? (x.my_access === 'pending' ? 'Asked' : 'Ask owner') : { ipl: 'IPL', international: 'Intl', custom: 'Custom' }[x.category]}</span></button>`; }).join('')}</div>
     <button class="btn block" style="margin:8px 0 20px">${id ? 'Save tournament' : 'Create tournament →'}</button></form>`, 'tournaments');
+  App.tFormat(t.format);
 }
 App.lockedTeam = id => {
   const t = (S.tteams || []).find(x => x.id === id) || {};
@@ -1603,7 +1627,8 @@ App.tToggle = (id, el) => {
 App.saveTournament = (e, id) => {
   e.preventDefault();
   if (S.tsel.size < 2) return toast('Pick at least 2 teams', true);
-  run(async () => { const f = formData(e.target); f.id = id; f.team_ids = [...S.tsel]; const r = await api('tournament_save', f); toast(id ? 'Saved' : 'Tournament created! 🏆'); go('#/tournament/' + r.id); }, e.submitter);
+  run(async () => { const f = formData(e.target); f.id = id; f.team_ids = [...S.tsel];
+    f.playoffs = { format: f.po_format, po_overs: f.po_overs, po_max_bowler: f.po_max_bowler, final_overs: f.final_overs, final_max_bowler: f.final_max_bowler }; const r = await api('tournament_save', f); toast(id ? 'Saved' : 'Tournament created! 🏆'); go('#/tournament/' + r.id); }, e.submitter);
 };
 async function viewTournament(id) {
   mount(topbar('Tournament', { back: true }) + `<div class="content">${sk(4)}</div>`, 'tournaments');
@@ -1614,7 +1639,7 @@ async function viewTournament(id) {
   if (S.tTab === 'points') {
     body = `<div class="card flush"><table class="tbl"><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>T/NR</th><th>Pts</th><th>NRR</th></tr>
       ${d.points.map((r, i) => `<tr onclick="go('#/team/${r.id}')"><td><div class="row" style="gap:8px"><span class="muted small">${i + 1}</span>${badge(r, 'sm')}<b>${esc(r.short_name)}</b></div></td><td>${r.p}</td><td>${r.w}</td><td>${r.l}</td><td>${r.t + r.nr}</td><td><b>${r.pts}</b></td><td>${r.nrr > 0 ? '+' : ''}${r.nrr.toFixed(3)}</td></tr>`).join('')}</table></div>
-      <div class="small muted">Win = 2 pts, tie / no result = 1 pt. NRR = net run rate.</div>`;
+      <div class="small muted">Win = 2 pts, tie / no result = 1 pt. Level on points: net run rate (NRR) decides. Playoff matches don't count here.</div>`;
   } else if (S.tTab === 'leaders') {
     body = leaderBlock('🏏 Most runs', d.leaders.runs, r => r.runs, r => `${r.balls} balls · SR ${r.balls ? (r.runs * 100 / r.balls).toFixed(1) : 0}`)
       + leaderBlock('🎯 Most wickets', d.leaders.wickets, r => r.wkts, r => `${r.runs} runs · ${Math.floor(r.balls / 6)}.${r.balls % 6} ov`)
@@ -1622,7 +1647,10 @@ async function viewTournament(id) {
   } else if (S.tTab === 'teams') {
     body = `<div class="card flush list">${d.teams.map(x => `<div class="item" onclick="go('#/team/${x.id}')">${badge(x)}<div class="grow"><div class="t">${esc(x.name)}</div><div class="s">${plural(+x.players, 'player')}</div></div><span class="chev">${I.chev}</span></div>`).join('')}</div>`;
   } else {
-    body = (t.can_edit ? `<div class="grid2" style="margin-bottom:12px">${d.matches.length ? '' : `<button class="btn" onclick="App.fixtures(this)">⚡ Auto fixtures</button>`}<button class="btn light" ${d.matches.length ? 'style="grid-column:1/-1"' : ''} onclick="go('#/match/new?t=${t.id}')">${I.plus} Add match</button></div>` : '')
+    const po = d.playoffs || {}, leagueN = d.matches.filter(m => (m.stage || 'league') === 'league').length;
+    const poCard = po.format && po.format !== 'none' ? `<div class="card" style="border-left:4px solid var(--lime);padding:10px 12px;margin-bottom:12px"><div class="row"><span style="font-size:24px">🏆</span><div class="grow"><b>Playoffs</b><div class="small muted">${esc(PO_FORMAT[po.format] || '')}${po.po_overs ? ` · ${po.po_overs} overs` : ''}${po.final_overs ? ` · final ${po.final_overs} overs` : ''}${po.po_max_bowler ? ` · max ${po.po_max_bowler} ov/bowler` : ''}</div></div>
+      ${t.can_edit && !po.started && leagueN ? `<button class="btn sm" onclick="App.playoffs(this)">Create playoffs</button>` : po.started ? '<span class="small muted">under way</span>' : ''}</div></div>` : '';
+    body = poCard + (t.can_edit ? `<div class="grid2" style="margin-bottom:12px">${d.matches.length ? '' : `<button class="btn" onclick="App.fixtures(this)">⚡ Auto fixtures</button>`}<button class="btn light" ${d.matches.length ? 'style="grid-column:1/-1"' : ''} onclick="go('#/match/new?t=${t.id}')">${I.plus} Add match</button></div>` : '')
       + (d.matches.length ? d.matches.map(matchCard).join('') : `<div class="card empty"><div class="big">📅</div>No matches yet.${t.can_edit ? `<br>Tap <b>Auto fixtures</b> to create ${t.format === 'knockout' ? 'round-1 knockout' : 'all league'} matches.` : ''}</div>`);
   }
   const actions = t.can_edit ? `<button class="icon-btn" aria-label="Options" onclick="App.tourMenu()">${I.dots}</button>` : '';
@@ -1638,6 +1666,11 @@ function leaderBlock(title, list, val, sub) {
   return `<div class="section"><h2>${title}</h2></div>` + (list.length ? `<div class="card flush list">${list.map((r, i) => `<div class="item" onclick="go('#/player/${r.pid}')"><span class="rank">${['🥇', '🥈', '🥉'][i] || i + 1}</span>${badge({ short_name: r.team, color: r.color }, 'sm')}
     <div class="grow"><div class="t ellipsis">${esc(r.name)}</div><div class="s">${sub(r)}</div></div><b class="big-num">${val(r)}</b></div>`).join('')}</div>` : '<div class="card empty small">No data yet - play some matches!</div>');
 }
+App.playoffs = (btn, force = 0) => run(async () => {
+  const r = await api('tournament_playoffs', { id: S.tour.tournament.id, force });
+  if (r.confirm) return confirmSheet('League not finished', r.confirm, 'Create playoffs', () => { closeSheet(); App.playoffs(null, 1); }, false);
+  toast(`${plural(r.created, 'playoff match')} created 🏆`); render();
+}, btn);
 App.fixtures = btn => run(async () => { const r = await api('tournament_fixtures', { id: S.tour.tournament.id }); toast(`${plural(r.created, 'match')} created ✓`); render(); }, btn);
 App.tourMenu = () => sheet(`<h3>Tournament options</h3><div class="plist">
   <button class="pbtn" onclick="go('#/tournament/${S.tour.tournament.id}/edit')">✏️ Edit tournament & teams</button>
@@ -1721,7 +1754,7 @@ async function viewTypes() {
   const d = await api('types_list'); S.types = d.types;
   mount(topbar('Match Types', { back: true }) + `<div class="content">${d.types.map(t => `<div class="card row" ${t.is_system && !S.user.is_admin ? '' : `style="cursor:pointer" onclick="App.typeForm(${t.id})"`}>
       <span class="badge" style="background:var(--pitch);color:#fff">${t.overs}</span><div class="grow"><b>${esc(t.name)}</b>${t.is_system ? ' <span class="role-tag">built-in</span>' : ''}
-      <div class="small muted">${t.overs} overs · ${t.players_per_side} a side · ${t.max_overs_bowler ? t.max_overs_bowler + ' ov/bowler' : 'no bowling limit'}${t.last_man_stands ? ' · last man stands' : ''}</div></div></div>`).join('')}</div>
+      <div class="small muted">${t.overs} overs · ${t.players_per_side} a side · ${t.max_overs_bowler ? t.max_overs_bowler + ' ov/bowler' + (+t.extra_bowlers ? ` (${t.extra_bowlers} may bowl ${t.extra_overs})` : '') : 'no bowling limit'}${t.last_man_stands ? ' · last man stands' : ''}</div></div></div>`).join('')}</div>
     <button class="fab" aria-label="New match type" onclick="App.typeForm(0)">${I.plus}</button>`, 'more');
 }
 App.typeForm = id => {
@@ -1732,6 +1765,8 @@ App.typeForm = id => {
     <div class="field"><label>Balls/over</label><input class="input" type="number" name="balls_per_over" min="1" max="10" value="${t.balls_per_over}"></div>
     <div class="field"><label>Players</label><input class="input" type="number" name="players_per_side" min="1" max="15" value="${t.players_per_side}"></div></div>
     <div class="field"><label>Max overs per bowler (0 = no limit)</label><input class="input" type="number" name="max_overs_bowler" min="0" max="50" value="${t.max_overs_bowler}"></div>
+    <div class="grid2"><div class="field"><label>…but up to (bowlers)</label><input class="input" type="number" name="extra_bowlers" min="0" max="11" placeholder="0" value="${t.extra_bowlers || ''}"></div><div class="field"><label>…may bowl (overs)</label><input class="input" type="number" name="extra_overs" min="0" max="50" placeholder="-" value="${t.extra_overs || ''}"></div></div>
+    <div class="small muted" style="margin:-6px 0 12px">E.g. 6 overs: max 1 each, but up to 2 bowlers may bowl 2 overs. Leave blank for one limit for everyone.</div>
     <label class="switch" style="margin-bottom:14px"><b>Last man stands</b><input type="checkbox" name="last_man_stands" ${+t.last_man_stands ? 'checked' : ''}><span class="knob"></span></label>
     <div class="field"><label>Bouncers allowed per over (0 = no limit)</label><input class="input" type="number" name="bouncers_per_over" min="0" max="6" value="${t.bouncers_per_over ?? 1}"></div>
     <button class="btn block">Save</button>${id ? `<button type="button" class="btn light block" style="margin-top:8px;color:var(--red)" onclick="App.deleteType(${id})">Delete</button>` : ''}</form>`);

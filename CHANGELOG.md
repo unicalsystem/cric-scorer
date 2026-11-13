@@ -4,6 +4,15 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.27.0 - 13 November 2026
+- Playoffs: the tournament form's **League + playoffs** format (now the default) lets you choose the playoff format - **IPL style** (Qualifier 1: 1st v 2nd, Eliminator: 3rd v 4th, Qualifier 2: loser of Q1 v winner of the Eliminator, Final - the default), **Semi-finals** (1v4, 2v3) + Final, or **Final only** - with their own overs and max overs per bowler for the qualifiers / semis and for the final (blank = same as the league)
+- After the league, tap **Create playoffs** on the Matches tab (it warns if league games are still unfinished). Winners move on automatically; a playoff that ends level (super over tied too, or no result) sends the higher-placed team through. Club tournaments run separate playoffs per category
+- Playoff matches no longer count in points tables
+- League table order: points, then net run rate, then (club leagues) wickets taken. Club points tables now show NRR
+- Bowling quota: "max N overs a bowler, but up to X bowlers may bowl Y overs" (e.g. a 6-over game: 1 over each, 2 bowlers may bowl 2) on match types and the New Match form; the bowler picker and the server both enforce it
+- A tie still gives 1 point each when there's no super over or the super over is tied too; a super-over winner gets the win
+- New club rule sheets start with Junior (19 & under), Open (20+), Mixed (at least 1 woman) and win 2 / tie 1 / no result 1
+
 ## 1.26.0 - 13 November 2026
 - Team owner hand-over (administrator only): on a custom team's page the admin sees "👑 Owner: …" with a **Change owner** button - search a player by name, username or full mobile number and hand the team over. The new owner can edit the team, its squad and who may use it. The old owner keeps using the team by default (untick "Let … keep using this team" to remove them)
 

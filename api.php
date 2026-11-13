@@ -432,6 +432,7 @@ function handle(string $action, array $in, ?array $u) {
         $vals = [$name, max(1, min(100, int_in($in, 'overs', 20))), max(1, min(10, int_in($in, 'balls_per_over', 6))),
                  max(1, min(15, int_in($in, 'players_per_side', 11))), max(0, min(50, int_in($in, 'max_overs_bowler', 0))),
                  !empty($in['last_man_stands']) ? 1 : 0, max(0, min(6, int_in($in, 'bouncers_per_over', 1))), str_in($in, 'description', 255) ?: null];
+        $xq = extra_quota($in, (int)$vals[4]);
         if ($id) {
             $t = row('SELECT * FROM match_types WHERE id=?', [$id]);
             if (!$t || ($t['is_system'] && !$u['is_admin']) || (!$t['is_system'] && !can_edit_owned($t, $u))) fail('You cannot edit this match type', 403);
@@ -440,6 +441,7 @@ function handle(string $action, array $in, ?array $u) {
             q('INSERT INTO match_types (name, overs, balls_per_over, players_per_side, max_overs_bowler, last_man_stands, bouncers_per_over, description, owner_id) VALUES (?,?,?,?,?,?,?,?,?)', array_merge($vals, [$u['id']]));
             $id = lastId();
         }
+        q('UPDATE match_types SET extra_bowlers=?, extra_overs=? WHERE id=?', [$xq[0], $xq[1], $id]);
         return ['id' => $id];
     }
 
@@ -484,6 +486,8 @@ function handle(string $action, array $in, ?array $u) {
             max(1, min(15, int_in($in, 'players_per_side', 11))), max(0, min(50, int_in($in, 'max_overs_bowler', 0))),
             !empty($in['last_man_stands']) ? 1 : 0, str_in($in, 'venue', 150) ?: null, $date, $visibility, max(0, min($overs, int_in($in, 'powerplay_overs', 0))), max(0, min(6, int_in($in, 'bouncers_per_over', 1)))]);
         $mid = lastId();
+        $xq = $test ? [0, 0] : extra_quota($in, max(0, min(50, int_in($in, 'max_overs_bowler', 0))));
+        if ($xq[0]) q('UPDATE matches SET extra_bowlers=?, extra_overs=? WHERE id=?', [$xq[0], $xq[1], $mid]);
         if ($test) q('UPDATE matches SET format=?, days=?, follow_on=?, powerplay_overs=0 WHERE id=?', ['test', max(1, min(7, int_in($in, 'days', 5))), max(0, min(500, int_in($in, 'follow_on', 200))), $mid]);
         $bt = (string)($in['ball_type'] ?? ''); $round = str_in($in, 'round_name', 60);
         $gid = nint($in['ground_id'] ?? null); if ($gid && !val('SELECT 1 FROM grounds WHERE id=?', [$gid])) $gid = null;
@@ -601,6 +605,7 @@ function handle(string $action, array $in, ?array $u) {
         if (!$t) fail('Tournament not found', 404);
         if (!can_view_tournament($t, $u)) fail('This tournament is for club members only 🔒', 403);
         $t['can_edit'] = can_edit_owned($t, $u);
+        if (($t['format'] ?? '') === 'league_final') playoff_advance((int)$t['id']);   // before listing matches, so new playoff games show up
         $teams = rows('SELECT t.id, t.name, t.short_name, t.color, t.league_group, t.league_cat, (SELECT COUNT(*) FROM players p WHERE p.team_id=t.id) players FROM tournament_teams tt JOIN teams t ON t.id=tt.team_id WHERE tt.tournament_id=? ORDER BY t.league_cat, t.league_group, t.name', [$t['id']]);
         [$vs, $vp] = vis_sql($u);
         $matches = match_summaries(rows("SELECT * FROM matches WHERE tournament_id=? AND $vs ORDER BY COALESCE(match_date, created_at), id", array_merge([$t['id']], $vp)));
@@ -608,7 +613,7 @@ function handle(string $action, array $in, ?array $u) {
         $t['done'] = count(array_filter($matches, fn($m) => in_array($m['status'], ['completed', 'abandoned'], true)));
         $t['live'] = count(array_filter($matches, fn($m) => $m['status'] === 'live'));
         $t['state'] = tournament_state($t);
-        return ['tournament' => $t, 'teams' => $teams, 'matches' => $matches, 'points' => points_table((int)$t['id']), 'leaders' => leaderboards((int)$t['id'], 5, $u), 'mvp' => tournament_mvp((int)$t['id'], 10)] + league_tournament_extra($t);
+        return ['tournament' => $t, 'teams' => $teams, 'matches' => $matches, 'points' => points_table((int)$t['id']), 'leaders' => leaderboards((int)$t['id'], 5, $u), 'mvp' => tournament_mvp((int)$t['id'], 10)] + league_tournament_extra($t) + playoff_info($t);
     }
 
     case 'tournament_save': {
@@ -627,6 +632,7 @@ function handle(string $action, array $in, ?array $u) {
             $vis = ($in['visibility'] ?? '') === 'club' ? 'club' : 'public';
             foreach ($teams as $tid) { $tt = row('SELECT * FROM teams WHERE id=?', [$tid]); if ($tt && ((int)$tt['academy_id'] !== $clubId || !$tt['league_cat'])) fail($tt['name'] . ' is not set up for ' . $cfg['club_name'] . ' - open the team, tap Edit and pick its group and category'); }
         }
+        $poJson = $fmt === 'league_final' ? json_encode(playoff_clean((array)($in['playoffs'] ?? []))) : null;
         $vals = [$name, $fmt, nint($in['match_type_id'] ?? null), str_in($in, 'start_date', 10) ?: null, str_in($in, 'end_date', 10) ?: null, str_in($in, 'venue', 150) ?: null, $clubId, $vis];
         if ($id) {
             $t = row('SELECT * FROM tournaments WHERE id=?', [$id]);
@@ -637,6 +643,7 @@ function handle(string $action, array $in, ?array $u) {
             q('INSERT INTO tournaments (name, format, match_type_id, start_date, end_date, venue, academy_id, visibility, owner_id) VALUES (?,?,?,?,?,?,?,?,?)', array_merge($vals, [$u['id']]));
             $id = lastId();
         }
+        q('UPDATE tournaments SET playoff_json=? WHERE id=?', [$poJson, $id]);
         foreach ($teams as $tid) if (val('SELECT 1 FROM teams WHERE id=?', [$tid])) q('INSERT INTO tournament_teams (tournament_id, team_id) VALUES (?,?)', [$id, $tid]);
         return ['id' => $id];
     }
@@ -650,7 +657,7 @@ function handle(string $action, array $in, ?array $u) {
     }
 
     case 'tournament_fixtures': {
-        $t = row('SELECT t.*, mt.overs, mt.balls_per_over, mt.players_per_side, mt.max_overs_bowler, mt.last_man_stands, mt.bouncers_per_over FROM tournaments t LEFT JOIN match_types mt ON mt.id=t.match_type_id WHERE t.id=?', [int_in($in, 'id')]);
+        $t = row('SELECT t.*, mt.overs, mt.balls_per_over, mt.players_per_side, mt.max_overs_bowler, mt.extra_bowlers, mt.extra_overs, mt.last_man_stands, mt.bouncers_per_over FROM tournaments t LEFT JOIN match_types mt ON mt.id=t.match_type_id WHERE t.id=?', [int_in($in, 'id')]);
         if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
         if (val('SELECT 1 FROM matches WHERE tournament_id=? LIMIT 1', [$t['id']])) fail('Fixtures already exist for this tournament');
         $teams = array_map('intval', array_column(rows('SELECT team_id FROM tournament_teams WHERE tournament_id=?', [$t['id']]), 'team_id'));
@@ -682,7 +689,14 @@ function handle(string $action, array $in, ?array $u) {
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [$t['owner_id'], $t['id'], $t['match_type_id'], $title, $a, $b,
                $t['overs'] ?? 20, $t['balls_per_over'] ?? 6, $t['players_per_side'] ?? 11, $t['max_overs_bowler'] ?? 0, $t['last_man_stands'] ?? 0, $t['venue'], $date, $t['bouncers_per_over'] ?? 1]);
         }
+        if (!empty($t['extra_bowlers'])) q('UPDATE matches SET extra_bowlers=?, extra_overs=? WHERE tournament_id=?', [$t['extra_bowlers'], $t['extra_overs'], $t['id']]);
         return ['created' => count($pairs)];
+    }
+
+    case 'tournament_playoffs': {                      // v1.27: create round 1 of the playoffs from the league table
+        $t = row('SELECT * FROM tournaments WHERE id=?', [int_in($in, 'id')]);
+        if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
+        return playoff_start((int)$t['id'], !empty($in['force']));
     }
 
     /* ===== Academy (lessons & quizzes) ===== */
