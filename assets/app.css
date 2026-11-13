@@ -654,3 +654,6 @@ body:not(.app-mode) #tabbar{display:none!important}
 .tour-card{min-width:230px;max-width:230px;margin:0;padding:12px;scroll-snap-align:start;cursor:pointer;flex:none}
 .news-thumb{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#0d4a36,#1f7a55);display:grid;place-items:center;font-size:24px;flex:none;overflow:hidden;position:relative}
 .news-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* v1.31: match page - link to its tournament */
+.tour-link{display:flex;align-items:center;gap:10px;margin:10px 16px 0;padding:10px 14px;border-radius:14px;background:linear-gradient(135deg,#fff7df,#ffeec2);color:#5b3d00;text-decoration:none;font-size:14px;box-shadow:var(--shadow)}
+.tour-link:active{opacity:.85}

@@ -671,6 +671,8 @@ function drawMatch(first) {
       '');
   const sub = [m.visibility === 'private' ? '🔒 Private' : '', m.scorer && st.can_edit && !st.is_owner ? '✍️ You are the scorer' : m.scorer ? '✍️ Scorer: ' + m.scorer.display_name : '', m.title, m.tournament?.name].filter(Boolean).join(' · ');
   let html = topbar(`${t1.short_name} vs ${t2.short_name}`, { back: true, actions, sub });
+  // v1.31: which tournament this match belongs to - tap to open it
+  if (m.tournament) html += `<a class="tour-link" href="#/tournament/${m.tournament.id}"><span style="font-size:20px">🏆</span><span class="grow ellipsis">Part of <b>${esc(m.tournament.name)}</b>${m.stage && m.stage !== 'league' && STAGE[m.stage] ? ` · ${STAGE[m.stage]}` : m.title ? ` · ${esc(m.title)}` : ''}</span><span class="small" style="font-weight:800;white-space:nowrap">Points & fixtures ›</span></a>`;
   const inn = st.innings.length ? curInn() : null;
   html += inn ? scoreBoard(st, inn) : preBoard(st);
 

@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.31.0 - 14 November 2026
+- Match page: a tournament match shows "🏆 Part of <tournament> · Match 3" at the top - tap it to open the tournament (points table, fixtures, leaderboard, awards)
+
 ## 1.30.0 - 14 November 2026
 - Tournament **Leaderboard** tab (was Stats): MVP table, most runs, most wickets, highest scores, best bowling figures, most sixes and fours, best strike rate (min 10 balls), best economy (min 2 overs) and most catches
 - New tournament **Awards** tab: Player of the Tournament (most MVP points), Best Batter (most runs), Best Bowler (most wickets) and Most Sixes - shown as "leading so far" and final once every match (and the final, with playoffs) is played
