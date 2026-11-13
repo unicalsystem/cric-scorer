@@ -228,6 +228,24 @@ function handle(string $action, array $in, ?array $u) {
         q('UPDATE teams SET captain=? WHERE id=?', [$name, $t['id']]);
         return ['captain' => $name];
     }
+    case 'team_owner_set': {                           // v1.26: admin hands a custom team to another player
+        if (empty($u['is_admin'])) fail('Only the administrator can change a team\'s owner', 403);
+        $t = row('SELECT * FROM teams WHERE id=?', [int_in($in, 'id')]);
+        if (!$t) fail('Team not found', 404);
+        if ($t['category'] !== 'custom') fail('IPL and international teams have no owner');
+        $new = row('SELECT id, display_name, username FROM users WHERE id=?', [int_in($in, 'user_id')]);
+        if (!$new) fail('Player not found');
+        $old = $t['owner_id'] !== null ? (int)$t['owner_id'] : null;
+        if ($old === (int)$new['id']) fail($new['display_name'] . ' already owns this team');
+        db()->beginTransaction();
+        q('UPDATE teams SET owner_id=? WHERE id=?', [$new['id'], $t['id']]);
+        q('DELETE FROM team_access WHERE team_id=? AND user_id=?', [$t['id'], $new['id']]);   // owners need no access row
+        // the previous owner keeps using the team (their fixtures keep working) unless the admin says otherwise
+        if ($old && empty($in['drop_old']))
+            q("INSERT INTO team_access (team_id, user_id, status) VALUES (?, ?, 'allowed') ON DUPLICATE KEY UPDATE status='allowed'", [$t['id'], $old]);
+        db()->commit();
+        return ['owner_id' => (int)$new['id'], 'owner_name' => $new['display_name']];
+    }
     case 'team_save': {
         $id = int_in($in, 'id');
         $name = str_in($in, 'name', 100);

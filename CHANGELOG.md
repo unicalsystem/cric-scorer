@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.26.0 - 13 November 2026
+- Team owner hand-over (administrator only): on a custom team's page the admin sees "👑 Owner: …" with a **Change owner** button - search a player by name, username or full mobile number and hand the team over. The new owner can edit the team, its squad and who may use it. The old owner keeps using the team by default (untick "Let … keep using this team" to remove them)
+
 ## 1.25.0 - 11 November 2026
 - Import players: on a team page tap **📥 Import** and paste a list from WhatsApp or Excel (one player per line - numbering, bullets, "Name, bowler, 98765 43210", "Suresh (wk)", "#7" jersey numbers, tabs / CSV columns all understood; M/F and birth year too for club teams) or choose a CSV / text file. A preview shows what was understood; players already in the team are skipped, WhatsApp numbers link the player to their account, club squad limits are respected. Up to 60 at a time
 - Team page buttons are now Add · Pick · Import

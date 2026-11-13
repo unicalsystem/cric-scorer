@@ -1370,7 +1370,7 @@ async function viewTeam(id) {
   }).join('');
   mount(topbar(t.short_name, { back: true, actions }) + `<div class="team-hero" style="background:${esc(t.color)};color:${fg}"><span class="badge lg" style="background:${fg === '#ffffff' ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.08)'};color:${fg}">${esc(String(t.short_name).slice(0, 4))}</span>
       <div><h2>${esc(t.name)}</h2><p>${{ ipl: 'IPL franchise', international: 'International team', custom: 'Custom team' }[t.category]} · ${plural(d.players.length, 'player')}</p>
-      <p>${t.captain ? 'Captain: ' + esc(t.captain) : (t.can_edit ? 'No captain yet' : '')}${t.can_edit ? ` <button class="btn sm light" style="margin-left:6px;padding:4px 10px" onclick="App.captainSheet()">©️ ${t.captain ? 'Change' : 'Pick'} captain</button>` : ''}</p>${t.home_ground ? `<p>🏟️ ${esc(t.home_ground)}</p>` : ''}</div></div>
+      <p>${t.captain ? 'Captain: ' + esc(t.captain) : (t.can_edit ? 'No captain yet' : '')}${t.can_edit ? ` <button class="btn sm light" style="margin-left:6px;padding:4px 10px" onclick="App.captainSheet()">©️ ${t.captain ? 'Change' : 'Pick'} captain</button>` : ''}</p>${t.category === 'custom' && S.user && S.user.is_admin ? `<p>👑 Owner: ${esc(t.owner_name || 'nobody')} <button class="btn sm light" style="margin-left:6px;padding:4px 10px" onclick="App.ownerSheet()">Change owner</button></p>` : ''}${t.home_ground ? `<p>🏟️ ${esc(t.home_ground)}</p>` : ''}</div></div>
     <div class="content">
       ${teamAccessCard(t)}
       ${t.can_edit ? `<div class="grid2" style="margin-bottom:6px"><button class="btn" onclick="App.playerForm(null)">${I.plus} Add player</button><button class="btn light" onclick="App.pickPlayers()">📋 Pick from teams</button></div>` : ''}
@@ -1387,6 +1387,35 @@ App.captainSheet = () => {
   sheet(`<h3>©️ Team captain</h3><div class="sub">${esc(t.name)} - tap a player. The captain shows a C on the team page and in the playing XI.</div>
     <div class="plist">${d.players.map(p => `<button class="pbtn ${t.captain === p.name ? 'on' : ''}" onclick="App.setCaptain(${p.id})"><span class="chk">${t.captain === p.name ? '✓' : ''}</span>${roleIcon(p.role)} ${esc(p.name)}<span class="s">${esc(p.role)}</span></button>`).join('')}</div>
     ${t.captain ? '<button class="btn light block" onclick="App.setCaptain(null)">Remove captain</button>' : ''}`);
+};
+/* ---------- Owner: the admin hands a custom team to another player (v1.26) ---------- */
+App.ownerSheet = () => {
+  const t = S.team.team;
+  sheet(`<h3>👑 Change team owner</h3><div class="sub">${esc(t.name)} now belongs to <b>${esc(t.owner_name || 'nobody')}</b>. Search for the new owner by name, username or full mobile number.</div>
+    <input id="own-q" class="input" placeholder="Search players…" autocomplete="off" oninput="App.ownerSearch(this.value)">
+    <label class="small" style="display:flex;gap:8px;align-items:center;margin:10px 2px"><input type="checkbox" id="own-keep" checked> Let ${esc(t.owner_name || 'the old owner')} keep using this team</label>
+    <div class="plist" id="own-list"><div class="small muted">Type at least 2 letters</div></div>`);
+  setTimeout(() => { const i = $('#own-q'); if (i) i.focus(); }, 50);
+};
+App.ownerSearch = q => {
+  clearTimeout(App._ownT);
+  App._ownT = setTimeout(async () => {
+    const box = $('#own-list'); if (!box) return;
+    if (q.trim().length < 2) { box.innerHTML = '<div class="small muted">Type at least 2 letters</div>'; return; }
+    try {
+      const d = await api('users_search', { q: q.trim() });
+      App._ownUsers = d.users;
+      box.innerHTML = d.users.length ? d.users.map(x => `<button class="pbtn ${+x.id === +S.team.team.owner_id ? 'on' : ''}" onclick="App.setOwner(${x.id})"><span class="chk">${+x.id === +S.team.team.owner_id ? '✓' : ''}</span>${esc(x.display_name)}<span class="s">@${esc(x.username)}</span></button>`).join('') : '<div class="small muted">No players found</div>';
+    } catch (e) { box.innerHTML = `<div class="small muted">${esc(e.message || 'Search failed')}</div>`; }
+  }, 300);
+};
+App.setOwner = uid => {
+  const t = S.team.team, x = (App._ownUsers || []).find(y => +y.id === +uid);
+  const keep = !!($('#own-keep') || {}).checked;
+  confirmSheet('Hand over ' + t.name + '?', `${x ? x.display_name : 'This player'} becomes the owner and can edit the team, its players and who may use it.${t.owner_name ? ' ' + t.owner_name + (keep ? ' can still use the team.' : ' loses access.') : ''}`, 'Change owner', () => run(async () => {
+    const r = await api('team_owner_set', { id: t.id, user_id: uid, drop_old: keep ? 0 : 1 });
+    closeSheet(); toast(`${r.owner_name} now owns ${t.name} ✓`); render();
+  }), false);
 };
 App.setCaptain = pid => run(async () => { const r = await api('team_captain', { id: S.team.team.id, player_id: pid }); closeSheet(); toast(r.captain ? `${r.captain} is the captain ✓` : 'Captain removed'); render(); });
 
