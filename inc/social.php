@@ -32,26 +32,33 @@ function follow_counts(int $uid, array $viewer): array {
 }
 
 function users_search(array $u, array $in): array {
-    // Kept deliberately simple so it works the same on every MySQL / MariaDB version and setting
+    // v1.38: every registered player, 50 at a time (Load more), most-followed first; optional team filter
     $q = trim(str_in($in, 'q', 60));
+    $page = max(0, (int)($in['page'] ?? 0)); $per = 50;
+    $team = (int)($in['team_id'] ?? 0);
     $where = ['u.id <> ?']; $params = [(int)$u['id']];
     if (empty($u['is_admin'])) $where[] = 'u.is_private = 0';
-    // a full mobile number finds the player who verified it (exact match only - no browsing by partial numbers)
+    // a full mobile number finds the player who has it (exact match only - no browsing by partial numbers)
     $mob = preg_match('/^[+\d][\d\s\-()]{8,}$/', $q) ? normalize_mobile($q) : null;
     if ($mob) { $where[] = 'u.mobile = ?'; $params[] = $mob; }
     elseif ($q !== '') { $where[] = '(LOCATE(?, u.username) > 0 OR LOCATE(?, u.display_name) > 0)'; $params[] = $q; $params[] = $q; }
-    $list = rows('SELECT u.* FROM users u WHERE ' . implode(' AND ', $where) . ' ORDER BY u.display_name LIMIT 300', $params);
-    if (!$list) return ['users' => []];
+    if ($team) { $where[] = 'p.team_id = ?'; $params[] = $team; }
+    $w = implode(' AND ', $where);
+    $total = (int)val("SELECT COUNT(*) FROM users u LEFT JOIN players p ON p.id=u.player_id WHERE $w", $params);
+    $list = rows("SELECT u.*, t.short_name team_short, t.name team_name, t.id team_id, t.color team_color,
+                    (SELECT COUNT(*) FROM follows f JOIN users fu ON fu.id=f.follower_id WHERE f.followee_id=u.id AND fu.is_private=0) followers
+                  FROM users u LEFT JOIN players p ON p.id=u.player_id LEFT JOIN teams t ON t.id=p.team_id
+                  WHERE $w ORDER BY followers DESC, u.display_name LIMIT $per OFFSET " . ($page * $per), $params);
+    $teams = $q === '' && !$page ? rows("SELECT t.id, t.name, t.short_name, COUNT(*) n FROM users u JOIN players p ON p.id=u.player_id JOIN teams t ON t.id=p.team_id
+                                         WHERE u.id <> ?" . (empty($u['is_admin']) ? ' AND u.is_private=0' : '') . " GROUP BY t.id, t.name, t.short_name HAVING n > 1 ORDER BY t.name", [(int)$u['id']]) : [];
+    if (!$list) return ['users' => [], 'total' => $total, 'per' => $per, 'teams' => $teams];
     $ids = array_map(fn($r) => (int)$r['id'], $list);
     $ph = implode(',', array_fill(0, count($ids), '?'));
-    $counts = [];
-    foreach (rows("SELECT f.followee_id AS uid, COUNT(*) AS n FROM follows f JOIN users fu ON fu.id = f.follower_id
-                   WHERE fu.is_private = 0 AND f.followee_id IN ($ph) GROUP BY f.followee_id", $ids) as $c) $counts[(int)$c['uid']] = (int)$c['n'];
     $mine = [];
     foreach (rows("SELECT followee_id FROM follows WHERE follower_id = ? AND followee_id IN ($ph)", array_merge([(int)$u['id']], $ids)) as $f) $mine[(int)$f['followee_id']] = true;
-    $out = array_map(fn($r) => person($r) + ['following' => isset($mine[(int)$r['id']]), 'followers' => $counts[(int)$r['id']] ?? 0], $list);
-    usort($out, fn($a, $b) => [$b['followers'], strtolower($a['display_name'])] <=> [$a['followers'], strtolower($b['display_name'])]);
-    return ['users' => array_slice($out, 0, 40)];
+    $out = array_map(fn($r) => person($r) + ['following' => isset($mine[(int)$r['id']]), 'followers' => (int)$r['followers'], 'joined' => empty($r['placeholder']),
+        'team' => $r['team_short'] ? ['id' => (int)$r['team_id'], 'short_name' => $r['team_short'], 'name' => $r['team_name'], 'color' => $r['team_color']] : null], $list);
+    return ['users' => $out, 'total' => $total, 'per' => $per, 'teams' => $teams];
 }
 
 function user_profile(array $u, array $in): array {

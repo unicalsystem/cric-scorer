@@ -4,6 +4,10 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.38.0 - 14 November 2026
+- **Players page shows everyone**: Players → Find now lists every registered player (it stopped at 40), 50 at a time with **Load more** and the total count, most-followed first
+- Team chips at the top (All · Phoenix-Juniors 19 · Rangers-Seniors 27 …) filter players by the team they play for; each row shows their team, and "⏳ invited" for accounts made by the club that haven't signed in yet
+
 ## 1.37.0 - 14 November 2026
 - **Live viewers**: a live match shows "🔴 12 watching" at the top - everyone with the match open (signed in or guests) in the last 45 seconds; the scorer sees it too
 - **Admin → 👥 Players → 🔗 Merge two accounts**: for one person with two logins (e.g. the account made at import with their WhatsApp number and one they made with Gmail). Compare both, pick which stays, and everything moves into it - WhatsApp number, Gmail sign-in, password, player, family profiles, matches, teams, tournaments, followers; empty profile details are filled from the other; the person can then sign in with WhatsApp or Gmail. Choose which username survives

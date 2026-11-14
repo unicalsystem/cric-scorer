@@ -2466,17 +2466,31 @@ async function viewPeople(tab) {
        <br><button class="btn sm" style="margin-top:10px" onclick="go('#/people?t=find')">🔍 Find players</button></div>`;
 }
 let peopleT;
+/* v1.38: all registered players, 50 at a time, filter by team, Load more */
 App.peopleSearch = (q, now = false) => {
-  S.pq = q;
+  S.pq = q; S.pPage = 0;
   clearTimeout(peopleT);
-  peopleT = setTimeout(async () => {
-    try {
-      const d = await api('users_search', { q });
-      const el = $('#plist'); if (!el) return;
-      el.innerHTML = d.users.length ? `${q ? '' : '<div class="section" style="margin-top:4px"><h2>Players on Cric-Scorer</h2></div>'}<div class="card flush list">${d.users.map(p => personRow(p, ` · ${plural(p.followers, 'follower')}`)).join('')}</div>`
-        : `<div class="card empty"><div class="big">🔍</div>${q ? `No players found for “${esc(q)}”.` : 'No other players yet.'}<div class="small muted" style="margin-top:6px">Private players don't appear in search.</div></div>`;
-    } catch (e) { toast(e.message, true); }
-  }, now ? 0 : 250);
+  peopleT = setTimeout(() => App.peopleLoad(false), now ? 0 : 250);
+};
+App.peopleTeam = id => { S.pTeam = id; S.pPage = 0; App.peopleLoad(false); };
+App.peopleLoad = async more => {
+  const q = S.pq || '';
+  try {
+    if (more) S.pPage = (S.pPage || 0) + 1;
+    const d = await api('users_search', { q, page: S.pPage || 0, team_id: S.pTeam || 0 });
+    const el = $('#plist'); if (!el) return;
+    if (!more && d.teams && d.teams.length) S.pTeams = d.teams;
+    const row = p => personRow(p, `${p.team ? ' · ' + esc(p.team.short_name) : ''} · ${plural(p.followers, 'follower')}${p.joined ? '' : ' · <span title="Account made by the club - not signed in yet">⏳ invited</span>'}`);
+    const chips = !q && (S.pTeams || []).length ? `<div class="chips" style="overflow-x:auto;flex-wrap:nowrap;margin:2px 0 8px"><button class="chip ${!S.pTeam ? 'on' : ''}" onclick="App.peopleTeam(0)">All</button>${S.pTeams.map(t => `<button class="chip ${+S.pTeam === +t.id ? 'on' : ''}" onclick="App.peopleTeam(${t.id})">${esc(t.name.replace(/^Raheja /, ''))} <small>${t.n}</small></button>`).join('')}</div>` : '';
+    const moreBtn = (S.pPage + 1) * d.per < d.total ? `<button class="btn light block" id="pmore" style="margin-top:10px" onclick="App.peopleLoad(true)">Load more (${d.total - (S.pPage + 1) * d.per} left)</button>` : '';
+    if (more) {
+      const list = el.querySelector('.card.list'); if (list) list.insertAdjacentHTML('beforeend', d.users.map(row).join(''));
+      const b = $('#pmore'); if (b) b.outerHTML = moreBtn; else el.insertAdjacentHTML('beforeend', moreBtn);
+      return;
+    }
+    el.innerHTML = chips + (d.users.length ? `<div class="section" style="margin-top:4px"><h2>${q ? 'Results' : 'Players on Cric-Scorer'}</h2><span class="small muted">${d.total}</span></div><div class="card flush list">${d.users.map(row).join('')}</div>${moreBtn}`
+      : `<div class="card empty"><div class="big">🔍</div>${q ? `No players found for “${esc(q)}”.` : 'No other players yet.'}<div class="small muted" style="margin-top:6px">Private players don't appear in search.</div></div>`);
+  } catch (e) { toast(e.message, true); }
 };
 
 async function viewUser(id) {
