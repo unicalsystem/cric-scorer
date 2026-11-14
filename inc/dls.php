@@ -188,7 +188,7 @@ function rain_end_match(array $m): void {
     $runs = (int)$i2['runs'];
     if ($runs > $par) {
         $winner = (int)$i2['batting_team_id'];
-        $n = count(xi_ids((int)$m['id'], $winner));
+        $n = bat_limit($m, $winner);
         $left = max(1, ($m['last_man_stands'] ? $n : $n - 1) - (int)$i2['wickets']);
         $text = $names[$winner] . " won by $left wicket" . ($left === 1 ? '' : 's') . " (DLS method, par $par)";
     } elseif ($runs === $par) {

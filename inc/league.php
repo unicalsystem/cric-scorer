@@ -32,6 +32,7 @@ function league_defaults(): array {
             ['key' => 'mixed', 'name' => 'Mixed (min 1 woman)', 'min_age' => null, 'max_age' => null, 'min_women' => 1],
         ],
         'squad_size' => 10, 'playing' => 8,
+        'extra_subs' => true,               // v1.41: teams may carry more than the squad size; the extras are subs
         'points' => ['win' => 2, 'tie' => 1, 'no_result' => 1, 'per_runs' => 10, 'run_pts' => 0, 'wicket_pts' => 0],
         'wicket_mode' => 'all',             // all = every dismissal while bowling (run outs too); bowler = bowled/caught/lbw/stumped/hit wicket only
         'no_repeat' => [['mixed', 'open']], // category pairs that may not share a player within one group
@@ -67,6 +68,7 @@ function league_clean(array $in): array {
     $nr = [];
     foreach ((array)($in['no_repeat'] ?? []) as $pair) { if (!is_array($pair) || count($pair) !== 2) continue; [$a, $b] = array_values($pair); if (isset($cats[$a], $cats[$b]) && $a !== $b) $nr[] = [$a, $b]; }
     return ['enabled' => !empty($in['enabled']), 'categories' => array_values($cats), 'squad_size' => $squad, 'playing' => $playing, 'points' => $pts,
+            'extra_subs' => !empty($in['extra_subs']),
             'wicket_mode' => ($in['wicket_mode'] ?? 'all') === 'bowler' ? 'bowler' : 'all', 'no_repeat' => $nr, 'groups' => $groups,
             'max_teams_per_group' => max(1, min(20, (int)($in['max_teams_per_group'] ?? count($cats))))];
 }
@@ -128,13 +130,14 @@ function league_player_problem(array $cfg, array $cat, array $p, int $year): ?st
 function league_person_key(array $p): string { return $p['mobile'] ? 'm:' . $p['mobile'] : 'n:' . mb_strtolower(trim(preg_replace('/\s+/', ' ', $p['name']))); }
 
 /** Checks a team's squad or playing list against the club rules; returns a list of problems */
-function league_check_players(array $cfg, array $team, array $players, bool $playing, ?int $tournamentId = null): array {
+function league_check_players(array $cfg, array $team, array $players, bool $playing, ?int $tournamentId = null, bool $extrasOk = false): array {
     $probs = [];
     $cat = league_cat($cfg, $team['league_cat'] ?? null);
     if (!$cat) return [($team['name'] ?? 'Team') . ' has no league category - set it on the team page'];
     $year = (int)date('Y');
     $limit = $playing ? (int)$cfg['playing'] : (int)$cfg['squad_size'];
-    if (count($players) > $limit) $probs[] = ($team['name'] ?? 'Team') . ': ' . count($players) . ' players, the limit is ' . $limit . ($playing ? ' playing' : ' in a squad');
+    if (!$playing && ($cfg['extra_subs'] ?? true)) $extrasOk = true;   // v1.41: squad extras are subs
+    if (!$extrasOk && count($players) > $limit) $probs[] = ($team['name'] ?? 'Team') . ': ' . count($players) . ' players, the limit is ' . $limit . ($playing ? ' playing' : ' in a squad');
     $women = 0;
     foreach ($players as $p) { if ($x = league_player_problem($cfg, $cat, $p, $year)) $probs[] = $x; if (($p['gender'] ?? '') === 'F') $women++; }
     if ($playing && (int)$cat['min_women'] > 0 && $women < (int)$cat['min_women']) $probs[] = ($team['name'] ?? 'Team') . ': needs at least ' . $cat['min_women'] . ' women in the playing ' . $cfg['playing'] . " (has $women)";
@@ -162,7 +165,7 @@ function league_check_xi(array $m, int $teamId, array $playerIds): void {
     if (!$team || empty($team['league_cat'])) return;   // teams without a category play as ordinary teams
     $ph = implode(',', array_fill(0, max(1, count($playerIds)), '?'));
     $players = $playerIds ? rows("SELECT * FROM players WHERE id IN ($ph)", $playerIds) : [];
-    $probs = league_check_players($cfg, $team, $players, true, (int)$m['tournament_id']);
+    $probs = league_check_players($cfg, $team, $players, true, (int)$m['tournament_id'], extras_on($m));
     if ($probs) fail('Club rules: ' . implode(' · ', $probs));
 }
 
@@ -171,6 +174,7 @@ function league_check_squad_add(array $team): void {
     if (empty($team['academy_id']) || empty($team['league_cat'])) return;
     $cfg = league_of_academy((int)$team['academy_id']); if (!$cfg) return;
     $n = (int)val('SELECT COUNT(*) FROM players WHERE team_id=?', [$team['id']]);
+    if ($cfg['extra_subs'] ?? true) return;   // v1.41: extras allowed - they are subs
     if ($n >= (int)$cfg['squad_size']) fail('Club rules: a squad has at most ' . $cfg['squad_size'] . ' players (' . $cfg['playing'] . ' playing + ' . ($cfg['squad_size'] - $cfg['playing']) . ' extra)');
 }
 

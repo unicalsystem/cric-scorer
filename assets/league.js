@@ -57,6 +57,7 @@ LG.drawRules = () => {
 
     <div class="section"><h2>Teams</h2></div>
     <div class="card"><div class="grid2"><div class="field"><label>Players in a squad</label>${num('squad_size', cfg.squad_size)}</div><div class="field"><label>Playing per side</label>${num('playing', cfg.playing)}</div></div>
+      <label class="switch" style="margin:4px 0 10px"><span class="grow"><b>Teams may add more players than the squad size</b><div class="small muted">The extra players are subs. Only the playing number bat in a match.</div></span><input type="checkbox" name="extra_subs" ${cfg.extra_subs !== false ? 'checked' : ''}><span class="knob"></span></label>
       <div class="field"><label>Groups (one per line) - e.g. towers, blocks, departments</label><textarea class="input" name="groups" rows="4" placeholder="Tower G&#10;Tower H&#10;Tower I">${esc((cfg.groups || []).join('\n'))}</textarea></div>
       <div class="field"><label>Max teams per group</label>${num('max_teams_per_group', cfg.max_teams_per_group)}</div>
       <div class="small muted">Each group fields at most one team per category, and teams only play other groups' teams of the same category.</div></div>
@@ -75,7 +76,7 @@ LG.drawRules = () => {
 LG.pair = (a, b, on) => { const c = S.lg.cfg; c.no_repeat = (c.no_repeat || []).filter(p => !((p[0] === a && p[1] === b) || (p[0] === b && p[1] === a))); if (on) c.no_repeat.push([a, b]); };
 LG.saveRules = e => {
   e.preventDefault(); const f = formData(e.target), c = S.lg.cfg;
-  const league = { enabled: f.enabled ? 1 : 0, categories: c.categories.map(x => ({ ...x, key: x.key || x.name.toLowerCase().replace(/[^a-z0-9]+/g, '_') })), squad_size: +f.squad_size, playing: +f.playing,
+  const league = { enabled: f.enabled ? 1 : 0, categories: c.categories.map(x => ({ ...x, key: x.key || x.name.toLowerCase().replace(/[^a-z0-9]+/g, '_') })), squad_size: +f.squad_size, playing: +f.playing, extra_subs: f.extra_subs ? 1 : 0,
     points: { win: +f.p_win, tie: +f.p_tie, no_result: +f.p_no_result, per_runs: +f.p_per_runs, run_pts: +f.p_run_pts, wicket_pts: +f.p_wicket_pts }, wicket_mode: f.wicket_mode,
     no_repeat: c.no_repeat || [], groups: String(f.groups || '').split('\n').map(s => s.trim()).filter(Boolean), max_teams_per_group: +f.max_teams_per_group };
   run(async () => { const d = await api('academy_league_save', { id: S.lg.id, league }); S.lg.cfg = d.league; S.lg.teams = d.teams; toast(league.enabled ? 'League rules saved ✓' : 'Saved - league is switched off'); go('#/academy/' + S.lg.id); }, e.submitter);
@@ -112,7 +113,7 @@ viewTeam = async id => {
   await _viewTeamLG(id);
   const d = S.team; if (!d || !d.club || d.team.id !== +id) return;
   const c = d.club, content = document.querySelector('#app .content'); if (!content) return;
-  content.insertAdjacentHTML('afterbegin', `<div class="card" style="border-left:4px solid var(--pitch)"><div class="row"><span style="font-size:26px">🏟️</span><div class="grow"><b><a class="link" href="#/academy/${c.id}">${esc(c.name)}</a></b><div class="small muted">${esc(c.group || 'no group')} · ${esc(c.cat || 'no category')} · ${d.players.length}/${c.squad_size} in squad · ${c.playing} play${c.min_women ? ` · ≥ ${c.min_women} women` : ''}</div></div></div>
+  content.insertAdjacentHTML('afterbegin', `<div class="card" style="border-left:4px solid var(--pitch)"><div class="row"><span style="font-size:26px">🏟️</span><div class="grow"><b><a class="link" href="#/academy/${c.id}">${esc(c.name)}</a></b><div class="small muted">${esc(c.group || 'no group')} · ${esc(c.cat || 'no category')} · ${c.extra_subs && d.players.length > c.squad_size ? `${d.players.length} in squad (${c.squad_size} + ${d.players.length - c.squad_size} sub${d.players.length - c.squad_size === 1 ? '' : 's'})` : `${d.players.length}/${c.squad_size} in squad`} · ${c.playing} play${c.min_women ? ` · ≥ ${c.min_women} women` : ''}</div></div></div>
     ${c.problems.length ? `<div class="small" style="margin-top:8px;color:var(--red)">${c.problems.map(p => '⚠️ ' + esc(p)).join('<br>')}</div>` : `<div class="small" style="margin-top:8px;color:var(--pitch)">✅ Squad follows the club rules</div>`}</div>`);
 };
 ROUTES.forEach(r => { if (r[1] === _viewTeamLG) r[1] = viewTeam; });

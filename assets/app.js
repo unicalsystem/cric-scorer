@@ -1261,10 +1261,11 @@ function xiSetup() {
   const st = S.m, m = st.match;
   if (!S.squads || S.squads.mid !== m.id) { loadSquads(); return `<div class="content">${sk(3)}</div>`; }
   const tid = S.xiTeam, team = S.squads[tid], sel = S.xiSel[tid];
-  const tabs = [st.team1, st.team2].map(t => `<button class="${t.id === tid ? 'on' : ''}" onclick="S.xiTeam=${t.id};drawMatch(false)">${esc(t.short_name)} · ${S.xiSel[t.id].size}/${m.players_per_side}</button>`).join('');
+  const tabs = [st.team1, st.team2].map(t => `<button class="${t.id === tid ? 'on' : ''}" onclick="S.xiTeam=${t.id};drawMatch(false)">${esc(t.short_name)} · ${xiCount(m, S.xiSel[t.id])}</button>`).join('');
   const list = team.players.map(p => `<button class="pbtn ${sel.has(+p.id) ? 'on' : ''}" onclick="App.xiToggle(${p.id})"><span class="chk">${sel.has(+p.id) ? '✓' : ''}</span>${roleIcon(p.role)} ${esc(p.name)}<span class="s">${esc(p.role)}</span></button>`).join('');
-  return `<div class="content"><div class="section" style="margin-top:6px"><h2>Pick playing teams</h2><span class="small muted">up to ${m.players_per_side} each</span></div>
-    <div class="seg">${tabs}</div>
+  return `<div class="content"><div class="section" style="margin-top:6px"><h2>Pick playing teams</h2><span class="small muted">${xiHint(m)}</span></div>
+    ${xiExtrasBox(m)}
+    <div class="seg">${tabs}</div>${xiSubsLine(m, sel)}
     <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn sm light" onclick="App.xiFirst()">Pick first ${m.players_per_side}</button><button class="btn sm light" onclick="App.xiClear()">Clear</button>
     ${team.team.can_edit ? '<button class="btn sm light" onclick="App.quickPlayer()">+ New player</button>' : ''}</div>
     ${team.players.length ? `<div class="plist">${list}</div>` : `<div class="card empty"><div class="big">🧢</div>This team has no players yet.${team.team.can_edit ? '<br>Tap <b>+ New player</b> to add some.' : ''}</div>`}
@@ -1278,18 +1279,38 @@ async function loadSquads() {
     S.xiSel = {};
     for (const [t, d] of [[st.team1, a], [st.team2, b]]) {
       const saved = (st.xi[t.id] || []).map(p => p.id);
-      S.xiSel[t.id] = new Set(saved.length ? saved : (d.players.length <= st.match.players_per_side ? d.players.map(p => +p.id) : []));
+      S.xiSel[t.id] = new Set(saved.length ? saved : (d.players.length <= (st.match.xi_max || st.match.players_per_side) ? d.players.map(p => +p.id) : []));
     }
     S.xiTeam = S.xiTeam && S.squads[S.xiTeam] ? S.xiTeam : st.team1.id;
     drawMatch(false);
   } catch (e) { toast(e.message, true); }
 }
 App.xiToggle = id => {
-  const sel = S.xiSel[S.xiTeam], max = S.m.match.players_per_side;
+  const m = S.m.match, sel = S.xiSel[S.xiTeam], max = m.xi_max || m.players_per_side;
   if (sel.has(id)) sel.delete(id);
-  else { if (sel.size >= max) return toast(`Only ${max} players allowed`, true); sel.add(id); }
+  else { if (sel.size >= max) return toast(m.extra_players ? `Up to ${max} players` : `Only ${max} players allowed` + (m.can_set_extras ? ' - tick "Allow extra players" to pick more' : ''), true); sel.add(id); }
   drawMatch(false);
 };
+/* v1.41: extra players - shared by the playing-teams pickers */
+const xiCount = (m, sel) => m.extra_players ? `${sel.size}` + (sel.size > m.players_per_side ? ` (${m.players_per_side}+${sel.size - m.players_per_side})` : '') : `${sel.size}/${m.players_per_side}`;
+const xiHint = m => m.extra_players ? `${m.players_per_side} bat · up to ${m.xi_max} picked` : `up to ${m.players_per_side} each`;
+function xiExtrasBox(m) {
+  const pps = m.players_per_side;
+  if (m.can_set_extras) return `<label class="switch card" style="margin-bottom:10px;padding:12px 14px"><span class="grow"><b>➕ Allow extra players</b><div class="small muted">Pick more than ${pps} (e.g. 11 or 12). All of them can field and bowl; only ${pps} bat - the rest are subs. ${m.tournament ? 'Only the tournament owner or admin can change this.' : 'Only the match owner or admin can change this.'}</div></span>
+      <input type="checkbox" ${m.extra_players ? 'checked' : ''} onchange="App.xiExtras(this)"><span class="knob"></span></label>`;
+  return m.extra_players ? `<div class="notice">➕ Extra players allowed: pick up to ${m.xi_max}. Only ${pps} bat - the rest are subs (they can field).</div>` : '';
+}
+function xiSubsLine(m, sel) {
+  const pps = m.players_per_side, x = sel.size - pps;
+  return m.extra_players && x > 0 ? `<div class="small muted" style="margin:-4px 2px 10px">${sel.size} picked · ${pps} bat · ${x} sub${x === 1 ? '' : 's'} - everyone can field</div>` : '';
+}
+/* v1.41: tournament owner / admin allows more players than the playing number (the extras are subs - only the playing number bat) */
+App.xiExtras = cb => run(async () => {
+  const keep = S.xiSel; S.m = await api('match_extras', { id: S.m.match.id, on: cb.checked ? 1 : 0 });
+  const max = S.m.match.xi_max || S.m.match.players_per_side;
+  S.xiSel = keep; for (const k in S.xiSel) if (S.xiSel[k].size > max) S.xiSel[k] = new Set([...S.xiSel[k]].slice(0, max));
+  toast(cb.checked ? `Extra players allowed - only ${S.m.match.players_per_side} bat` : 'Extra players switched off');
+}).finally(() => drawMatch(false));
 App.xiFirst = () => { S.xiSel[S.xiTeam] = new Set(S.squads[S.xiTeam].players.slice(0, S.m.match.players_per_side).map(p => +p.id)); drawMatch(false); };
 App.xiClear = () => { S.xiSel[S.xiTeam] = new Set(); drawMatch(false); };
 App.saveXI = btn => {
@@ -1310,7 +1331,7 @@ App.saveQuickPlayer = e => {
     const f = formData(e.target); f.team_id = S.xiTeam;
     const r = await api('player_save', f);
     S.squads[S.xiTeam] = await api('team_get', { id: S.xiTeam });
-    if (S.xiSel[S.xiTeam].size < S.m.match.players_per_side) S.xiSel[S.xiTeam].add(r.id);
+    if (S.xiSel[S.xiTeam].size < (S.m.match.xi_max || S.m.match.players_per_side)) S.xiSel[S.xiTeam].add(r.id);
     closeSheet(); drawMatch(false);
   }, e.submitter);
 };
@@ -1735,6 +1756,8 @@ async function viewTournamentForm(id) {
       <div class="grid2"><div class="field"><label>Start date</label><input class="input" type="date" name="start_date" value="${esc(t.start_date || '')}"></div>
       <div class="field"><label>End date</label><input class="input" type="date" name="end_date" value="${esc(t.end_date || '')}"></div></div>
       <div class="field"><label>Venue</label><input class="input" name="venue" value="${esc(t.venue || '')}" placeholder="optional"></div>
+      <label class="switch" style="margin-top:6px"><span class="grow"><b>Allow extra players</b><div class="small muted">Teams may pick more than the players-a-side number (e.g. 11 or 12 for an 8-a-side game). Everyone picked can field; only the players-a-side number bat. The extras are subs. You can also change it for one match on its Pick playing teams screen.</div></span>
+        <input type="checkbox" name="extra_players" ${+t.extra_players ? 'checked' : ''}><span class="knob"></span></label>
     </div>
     ${playoffCard(t.playoffs && t.playoffs.format !== 'none' ? t.playoffs : null)}
     <div class="section"><h2>Teams</h2><span class="small muted" id="tcount">${S.tsel.size} selected</span></div>

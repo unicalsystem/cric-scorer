@@ -110,6 +110,7 @@ function playoff_match_insert(array $t, array $po, string $pool, string $poolNam
     q('INSERT INTO matches (owner_id, tournament_id, stage, pool, match_type_id, title, round_name, team1_id, team2_id, overs, balls_per_over, players_per_side, max_overs_bowler, last_man_stands, venue, match_date, bouncers_per_over)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [$t['owner_id'], $t['id'], $stage, $pool, $t['match_type_id'], $title, STAGE_NAMES[$stage], $a, $b,
        $overs, $t['balls_per_over'] ?? 6, $players, $maxb, $t['last_man_stands'] ?? 0, $t['venue'], date('Y-m-d H:i:s'), $t['bouncers_per_over'] ?? 1]);
+    inherit_extras(lastId());   // v1.41
 }
 
 function tournament_full(int $tid): ?array {

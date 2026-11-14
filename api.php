@@ -243,7 +243,7 @@ function handle(string $action, array $in, ?array $u) {
         $club = null;
         if (!empty($t['academy_id']) && ($cfg = league_of_academy((int)$t['academy_id']))) {
             $c = league_cat($cfg, $t['league_cat']);
-            $club = ['id' => $cfg['club_id'], 'name' => $cfg['club_name'], 'group' => $t['league_group'], 'cat' => $c ? $c['name'] : null, 'cat_key' => $t['league_cat'], 'squad_size' => $cfg['squad_size'], 'playing' => $cfg['playing'], 'min_women' => $c ? (int)$c['min_women'] : 0,
+            $club = ['id' => $cfg['club_id'], 'name' => $cfg['club_name'], 'group' => $t['league_group'], 'cat' => $c ? $c['name'] : null, 'cat_key' => $t['league_cat'], 'squad_size' => $cfg['squad_size'], 'playing' => $cfg['playing'], 'extra_subs' => (bool)($cfg['extra_subs'] ?? true), 'min_women' => $c ? (int)$c['min_women'] : 0,
                      'problems' => $c ? league_check_players($cfg, $t, $players, false) : []];
         }
         return ['team' => $t, 'players' => $players, 'recent' => $recent, 'club' => $club, 'my_clubs' => user_league_clubs($u)];
@@ -366,7 +366,7 @@ function handle(string $action, array $in, ?array $u) {
             if (isset($names[$key])) { $skipped[] = ['name' => $name, 'reason' => 'already in the team']; continue; }
             $mobRaw = trim((string)($r['mobile'] ?? '')); $mobile = $mobRaw === '' ? null : normalize_mobile($mobRaw);
             if ($mobile && isset($mobiles[$mobile])) { $skipped[] = ['name' => $name, 'reason' => 'that WhatsApp number is already in the team']; continue; }
-            if ($cfg && $count >= (int)$cfg['squad_size']) { $skipped[] = ['name' => $name, 'reason' => 'club squad limit of ' . $cfg['squad_size'] . ' reached']; continue; }
+            if ($cfg && !($cfg['extra_subs'] ?? true) && $count >= (int)$cfg['squad_size']) { $skipped[] = ['name' => $name, 'reason' => 'club squad limit of ' . $cfg['squad_size'] . ' reached']; continue; }
             $role = in_array($r['role'] ?? '', ['Batter', 'Bowler', 'All-rounder', 'Wicket-keeper'], true) ? $r['role'] : 'Batter';
             $gender = in_array($r['gender'] ?? '', ['M', 'F', 'O'], true) ? $r['gender'] : null;
             $by = (int)($r['birth_year'] ?? 0); $by = $by >= 1920 && $by <= (int)date('Y') ? $by : null;
@@ -520,6 +520,7 @@ function handle(string $action, array $in, ?array $u) {
             max(1, min(15, int_in($in, 'players_per_side', 11))), max(0, min(50, int_in($in, 'max_overs_bowler', 0))),
             !empty($in['last_man_stands']) ? 1 : 0, str_in($in, 'venue', 150) ?: null, $date, $visibility, max(0, min($overs, int_in($in, 'powerplay_overs', 0))), max(0, min(6, int_in($in, 'bouncers_per_over', 1)))]);
         $mid = lastId();
+        inherit_extras($mid);                          // v1.41: tournament's "allow extra players"
         $xq = $test ? [0, 0] : extra_quota($in, max(0, min(50, int_in($in, 'max_overs_bowler', 0))));
         if ($xq[0]) q('UPDATE matches SET extra_bowlers=?, extra_overs=? WHERE id=?', [$xq[0], $xq[1], $mid]);
         if ($test) q('UPDATE matches SET format=?, days=?, follow_on=?, powerplay_overs=0 WHERE id=?', ['test', max(1, min(7, int_in($in, 'days', 5))), max(0, min(500, int_in($in, 'follow_on', 200))), $mid]);
@@ -628,6 +629,15 @@ function handle(string $action, array $in, ?array $u) {
         return match_state((int)$m['id'], $u);
     }
 
+    case 'match_extras': {                             // v1.41: tournament owner / admin ticks "Allow extra players"
+        db()->beginTransaction();
+        $m = load_match(int_in($in, 'id'), true);
+        set_match_extras($m, $u, !empty($in['on']));
+        match_log($m, !empty($in['on']) ? 'Extra players allowed - only ' . (int)$m['players_per_side'] . ' bat' : 'Extra players switched off', $u);
+        db()->commit();
+        return match_state((int)$m['id'], $u);
+    }
+
     /* ===== Tournaments ===== */
     case 'tournaments_list': {
         $list = rows('SELECT t.*, mt.name type_name, CASE WHEN u.is_private=1 AND u.id<>' . (int)$u['id'] . ' THEN NULL ELSE u.display_name END owner_name,
@@ -690,6 +700,7 @@ function handle(string $action, array $in, ?array $u) {
             $id = lastId();
         }
         q('UPDATE tournaments SET playoff_json=? WHERE id=?', [$poJson, $id]);
+        if (array_key_exists('extra_players', $in)) { q('UPDATE tournaments SET extra_players=? WHERE id=?', [!empty($in['extra_players']) ? 1 : 0, $id]); tournament_extras_apply($id); }   // v1.41
         foreach ($teams as $tid) if (val('SELECT 1 FROM teams WHERE id=?', [$tid])) q('INSERT INTO tournament_teams (tournament_id, team_id) VALUES (?,?)', [$id, $tid]);
         return ['id' => $id];
     }
@@ -736,6 +747,7 @@ function handle(string $action, array $in, ?array $u) {
                $t['overs'] ?? 20, $t['balls_per_over'] ?? 6, $t['players_per_side'] ?? 11, $t['max_overs_bowler'] ?? 0, $t['last_man_stands'] ?? 0, $t['venue'], $date, $t['bouncers_per_over'] ?? 1]);
         }
         if (!empty($t['extra_bowlers'])) q('UPDATE matches SET extra_bowlers=?, extra_overs=? WHERE tournament_id=?', [$t['extra_bowlers'], $t['extra_overs'], $t['id']]);
+        tournament_extras_apply((int)$t['id']);
         return ['created' => count($pairs)];
     }
 

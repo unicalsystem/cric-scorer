@@ -35,7 +35,7 @@ function available_batters(array $inn): array {
     $xi = xi_ids((int)$inn['match_id'], (int)$inn['batting_team_id']);
     $out = out_ids((int)$inn['id']);
     $crease = array_filter([(int)$inn['striker_id'], (int)$inn['non_striker_id']]);
-    return array_values(array_diff($xi, $out, $crease));
+    return batting_cap($inn, array_values(array_diff($xi, $out, $crease)));   // v1.41: with extra players only the playing number bat
 }
 function recompute_innings(int $innId): array {
     $a = row('SELECT COALESCE(SUM(total_runs),0) r, COALESCE(SUM(is_wicket),0) w, COALESCE(SUM(is_legal),0) l, COALESCE(SUM(extra_runs),0) e FROM balls WHERE innings_id=?', [$innId]);
@@ -67,14 +67,14 @@ function innings_end_reason(array $m, array $inn): ?string {
 
 function set_playing_xi(array $m, array $in): void {
     if ($m['status'] !== 'scheduled' || latest_innings((int)$m['id'])) fail('Playing XI can only be changed before the match starts');
-    $max = (int)$m['players_per_side'];
+    $max = xi_max($m);                           // v1.41: more than the playing number when extra players are allowed
     $min = $m['last_man_stands'] ? 1 : 2;
     q('DELETE FROM match_players WHERE match_id=?', [$m['id']]);
     q('UPDATE matches SET toss_winner_id=NULL, toss_decision=NULL WHERE id=?', [$m['id']]);
     foreach ([(int)$m['team1_id'], (int)$m['team2_id']] as $tid) {
         $ids = array_values(array_unique(array_map('intval', (array)($in['xi'][$tid] ?? $in['xi'][(string)$tid] ?? []))));
         if (count($ids) < $min) fail("Select at least $min player(s) for each team");
-        if (count($ids) > $max) fail("Select at most $max players per team");
+        if (count($ids) > $max) fail(extras_on($m) ? "Select at most $max players per team" : "Select at most $max players per team (the tournament owner or admin can tick \"Allow extra players\")");
         $order = 0;
         $cap = (int)($in['captain'][$tid] ?? $in['captain'][(string)$tid] ?? 0); $wk = (int)($in['keeper'][$tid] ?? $in['keeper'][(string)$tid] ?? 0);
         league_check_xi($m, $tid, $ids);   // club league rules (age / women / no repeats), only for club tournaments
@@ -307,7 +307,7 @@ function test_after_innings(array $m, array $inn): void {
     }
     if ($no === 4) {
         $bat = (int)$inn['batting_team_id'];
-        if ($tot[$bat] > $tot[$other]) { $n = count(xi_ids((int)$m['id'], $bat)); $left = ($m['last_man_stands'] ? $n : $n - 1) - (int)$inn['wickets']; $done($bat, $names[$bat] . ' won by ' . max(1, $left) . ' wicket' . (max(1, $left) === 1 ? '' : 's')); }
+        if ($tot[$bat] > $tot[$other]) { $n = bat_limit($m, $bat); $left = ($m['last_man_stands'] ? $n : $n - 1) - (int)$inn['wickets']; $done($bat, $names[$bat] . ' won by ' . max(1, $left) . ' wicket' . (max(1, $left) === 1 ? '' : 's')); }
         elseif ($tot[$bat] < $tot[$other]) $done($other, $names[$other] . ' won by ' . ($tot[$other] - $tot[$bat]) . ' run' . ($tot[$other] - $tot[$bat] === 1 ? '' : 's'));
         else $done(null, 'Match tied');
     }
@@ -342,7 +342,7 @@ function finish_match(int $matchId): void {
     $tag = $dls ? ' (DLS method)' : '';
     if ((int)$i2['runs'] > $tieScore) {
         $winner = (int)$i2['batting_team_id'];
-        $n = count(xi_ids($matchId, $winner));
+        $n = bat_limit($m, $winner);
         $left = ($m['last_man_stands'] ? $n : $n - 1) - (int)$i2['wickets'];
         $ballsLeft = (int)$i2['max_overs'] * $bpo - (int)$i2['legal_balls'];
         $text = $names[$winner] . ' won by ' . max(1, $left) . ' wicket' . (max(1, $left) === 1 ? '' : 's');
@@ -707,6 +707,7 @@ function match_state(int $matchId, ?array $u): array {
         'match' => [
             'id' => (int)$m['id'], 'title' => $m['title'], 'status' => $m['status'], 'overs' => (int)$m['overs'],
             'balls_per_over' => (int)$m['balls_per_over'], 'players_per_side' => (int)$m['players_per_side'],
+            'extra_players' => extras_on($m), 'xi_max' => xi_max($m), 'can_set_extras' => can_set_extras($m, $u),
             'max_overs_bowler' => (int)$m['max_overs_bowler'], 'extra_bowlers' => (int)($m['extra_bowlers'] ?? 0), 'extra_overs' => (int)($m['extra_overs'] ?? 0), 'stage' => $m['stage'] ?? 'league', 'last_man_stands' => (bool)$m['last_man_stands'], 'bouncers_per_over' => (int)($m['bouncers_per_over'] ?? 1),
             'dls_g50' => (int)$m['dls_g50'], 'result_method' => $m['result_method'],
             'visibility' => $m['visibility'] ?? 'public', 'owner_id' => (int)$m['owner_id'],
@@ -799,7 +800,7 @@ function points_table(int $tid): array {
         else { $w = (int)$m['winner_team_id']; $l = $w === $a ? $b : $a; $tbl[$w]['w']++; $tbl[$w]['pts'] += 2; $tbl[$l]['l']++; }
         if (!empty($m['bonus_json'])) foreach ((json_decode($m['bonus_json'], true) ?: []) as $bt => $bp) if (isset($tbl[(int)$bt])) { $tbl[(int)$bt]['pts'] += (int)$bp; $tbl[(int)$bt]['bonus'] = ($tbl[(int)$bt]['bonus'] ?? 0) + (int)$bp; }
         $n = [];
-        foreach ([$a, $b] as $x) $n[$x] = count(xi_ids((int)$m['id'], $x));
+        foreach ([$a, $b] as $x) $n[$x] = bat_limit($m, $x);
         foreach (rows('SELECT * FROM innings WHERE match_id=? AND is_super=0', [$m['id']]) as $i) {
             $bt = (int)$i['batting_team_id']; $bw = (int)$i['bowling_team_id'];
             $allOut = (int)$i['wickets'] >= ($m['last_man_stands'] ? $n[$bt] : $n[$bt] - 1);

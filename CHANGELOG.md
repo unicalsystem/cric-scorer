@@ -4,6 +4,12 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.41.0 - 14 November 2026
+- **Extra players (subs)**: a match can now have more players a side than the playing number - e.g. 11 or 12 for an 8-a-side game. Everyone picked can field and bowl, but **only the playing number bat**: once that many batters have come in nobody new can bat, so the side is all out at 7 wickets in an 8-a-side game, and "won by N wickets" counts from 8
+- The **tournament owner, club owner or admin** switches it on: tournament → Edit → **Allow extra players** (applies to every match that hasn't started), or for one match with the ➕ switch on **Pick playing teams** (match owner or admin for a match outside a tournament). Others see a note. Switching it off trims each side back to the playing number
+- Pick playing teams shows "12 (8+4)" and "12 picked · 8 bat · 4 subs"
+- **Club squads**: League rules → **Teams may add more players than the squad size** (on by default) - a team can carry more than the squad size; the extras are subs. The team page shows "12 in squad (10 + 2 subs)"
+
 ## 1.40.0 - 14 November 2026
 - **Captains can start matches**: the captain of either team (when their player is linked to their account, or they were picked as captain in the playing XI) can now pick the XI, do the toss, start and score the match - no need to be named scorer first
 - **Owners get full control**: team owners (of either side), the tournament's creator and the club owner of a club tournament can now do everything the admin can with a match - start, score, choose the scorer, make it private/public, abandon, edit balls and delete

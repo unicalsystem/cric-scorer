@@ -696,11 +696,12 @@ xiSetup = () => {
   S.xiCap = S.xiCap || {}; S.xiWk = S.xiWk || {};
   if (S.xiCap[tid] === undefined) { const c = (st.xi[tid] || []).find(p => p.is_captain); S.xiCap[tid] = c ? c.id : null; }
   if (S.xiWk[tid] === undefined) { const k = (st.xi[tid] || []).find(p => p.is_keeper); S.xiWk[tid] = k ? k.id : null; }
-  const tabs = [st.team1, st.team2].map(t => `<button class="${t.id === tid ? 'on' : ''}" onclick="S.xiTeam=${t.id};drawMatch(false)">${esc(t.short_name)} · ${S.xiSel[t.id].size}/${m.players_per_side}</button>`).join('');
+  const tabs = [st.team1, st.team2].map(t => `<button class="${t.id === tid ? 'on' : ''}" onclick="S.xiTeam=${t.id};drawMatch(false)">${esc(t.short_name)} · ${xiCount(m, S.xiSel[t.id])}</button>`).join('');
   const list = team.players.map(p => { const on = sel.has(+p.id); return `<div class="xirow"><button class="pbtn ${on ? 'on' : ''}" onclick="App.xiToggle(${p.id})"><span class="chk">${on ? '✓' : ''}</span>${roleIcon(p.role)} ${esc(p.name)}<span class="s">${esc(p.role)}</span></button>
     ${on ? `<button class="tag ${S.xiCap[tid] === +p.id ? 'on' : ''}" onclick="App.xiCap(${p.id})">C</button><button class="tag ${S.xiWk[tid] === +p.id ? 'on' : ''}" onclick="App.xiWk(${p.id})">WK</button>` : ''}</div>`; }).join('');
-  return `<div class="content"><div class="section" style="margin-top:6px"><h2>Pick playing teams</h2><span class="small muted">up to ${m.players_per_side} each</span></div>
-    <div class="seg">${tabs}</div>
+  return `<div class="content"><div class="section" style="margin-top:6px"><h2>Pick playing teams</h2><span class="small muted">${xiHint(m)}</span></div>
+    ${xiExtrasBox(m)}
+    <div class="seg">${tabs}</div>${xiSubsLine(m, sel)}
     <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn sm light" onclick="App.xiFirst()">Pick first ${m.players_per_side}</button><button class="btn sm light" onclick="App.xiClear()">Clear</button>
     ${team.team.can_edit ? '<button class="btn sm light" onclick="App.quickPlayer()">+ New player</button>' : ''}</div>
     <div class="small muted" style="margin:-4px 0 8px">Tap <b>C</b> for the captain and <b>WK</b> for the keeper - used for captain stats and caught-behind.</div>
