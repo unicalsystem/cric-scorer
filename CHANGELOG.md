@@ -4,6 +4,10 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.36.1 - 14 November 2026
+- Switch profile moved to the top-right of Home (initials + first name ▾) and into More → Switch profile; it only appears when more than one family member shares the login
+- Fix: the Switch button on Home did not respond (a decorative circle in the header was covering it)
+
 ## 1.36.0 - 14 November 2026
 - **Team logos**: on a team page the owner (or admin) taps the badge 📷 → Upload logo. The logo replaces the coloured initials everywhere - team lists, match cards, scoreboards, points tables, tournaments. Re-drawn as a 256×256 PNG on the server (transparent backgrounds kept, nothing hidden in the file); change or remove any time
 

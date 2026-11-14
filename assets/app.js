@@ -440,10 +440,10 @@ async function viewHome() {
   const prof = activeProfile(), name = (prof && !prof.self ? prof.name : S.user.display_name).split(' ')[0];
   const hour = new Date().getHours();
   const hi = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const hero = `<div class="hero"><div class="brand">${LOGO}<div class="grow"><b>Cric-Scorer</b><span>by Aaryush</span></div><button class="icon-btn refresh-btn" aria-label="Refresh" onclick="App.refresh()">${I.refresh}</button></div>
+  const hero = `<div class="hero"><div class="brand">${LOGO}<div class="grow"><b>Cric-Scorer</b><span>by Aaryush</span></div>${profileBtn()}<button class="icon-btn refresh-btn" aria-label="Refresh" onclick="App.refresh()">${I.refresh}</button></div>
     <h2>${hi}, ${esc(name)}! 👋</h2><p>Ready to score today's big match?</p>
     <div class="cta"><button class="btn lime" onclick="go('#/match/new')">${I.plus} New Match</button><button class="btn ghost" onclick="go('#/tournaments')">${I.trophy} Tournaments</button></div>
-    ${profileChip()}</div>`;
+</div>`;
   mount(hero + `<div class="content">${sk(3)}</div>`, 'home');
   const d = await api('home');
   if (d.announcements) { S.extras = S.extras || {}; S.extras.announcements = d.announcements; }
@@ -476,10 +476,11 @@ function activeProfile() {
   let id = null; try { id = +localStorage.getItem('cs_prof_' + S.user.id); } catch (e) { /* private mode */ }
   return list.find(p => p.id === id) || list.find(p => p.self) || list[0];
 }
-function profileChip() {
-  const list = (S.user && S.user.profiles) || []; const p = activeProfile(); if (!p) return '';
-  return `<div class="prof-chip" onclick="${list.length > 1 ? 'App.switchProfile()' : `go('#/player/${p.id}')`}"><span class="badge sm" style="background:${esc(p.color)};color:#fff">${esc(String(p.short_name).slice(0, 4))}</span>
-    <span class="grow ellipsis"><b>${esc(p.name)}</b> · ${esc(p.team)}</span><span class="small" style="font-weight:800">${list.length > 1 ? 'Switch ▾' : 'My stats ›'}</span></div>`;
+/* v1.36.1: top-right button on Home, only when more than one family member shares the login */
+function profileBtn() {
+  const list = (S.user && S.user.profiles) || []; if (list.length < 2) return '';
+  const p = activeProfile(), ini = String(p.name).split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  return `<button class="prof-btn" aria-label="Switch profile - now ${esc(p.name)}" onclick="App.switchProfile()"><span class="prof-ini" style="background:${esc(p.color || '#0d4a36')}">${esc(ini)}</span><span class="prof-name">${esc(p.name.split(' ')[0])}</span>▾</button>`;
 }
 App.switchProfile = () => {
   const list = S.user.profiles || [], cur = activeProfile();
@@ -1865,7 +1866,7 @@ function viewMore() {
       ${u.is_admin ? item('🛠️', 'Admin portal', 'Stats, roll-out, updates, help desk', "go('#/admin')") : ''}
       ${u.features && u.features.auction ? item('🔨', 'APL Auction', 'Aaryush Premier League - bid for IPL stars with friends', "go('#/apl')") : ''}
       ${u.features && u.features.game ? item('🎮', 'Gully Duel', 'Bat vs bowl - two phones, one phone or the computer', "go('#/play')") : ''}
-      ${(u.profiles || []).length > 1 ? item('👨‍👩‍👧', 'Family profiles', 'Switch profile · logins for kids without a phone', "go('#/family')") : ''}
+      ${(u.profiles || []).length > 1 ? item('👤', 'Switch profile', 'Now: ' + esc((activeProfile() || {}).name || ''), 'App.switchProfile()') + item('👨‍👩‍👧', 'Family profiles', 'Everyone on your number · logins for kids without a phone', "go('#/family')") : ''}
       ${item('👥', 'Find players', 'Search, follow, and see your followers', "go('#/people')")}
       ${item('📊', 'Leaderboard', 'Top run scorers & wicket takers', "go('#/stats')")}
       ${item('⚙️', 'Match types', 'T20, ODI, Gully cricket & your own', "go('#/types')")}
