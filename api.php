@@ -526,8 +526,16 @@ function handle(string $action, array $in, ?array $u) {
         return ['id' => $mid];
     }
 
-    case 'match_get':
-        return match_state(int_in($in, 'id'), $u);
+    case 'match_get': {
+        $st = match_state(int_in($in, 'id'), $u);
+        $st['viewers'] = match_viewers_ping((int)$st['match']['id'], $u, (string)$st['match']['status']);   // v1.37: live viewers
+        return $st;
+    }
+    case 'match_viewers': {                            // v1.37: heartbeat from the scorer's screen
+        $m = load_match(int_in($in, 'id'));
+        if (!can_view_match($m, $u)) fail('This match is private 🔒', 403);
+        return ['viewers' => match_viewers_ping((int)$m['id'], $u, (string)$m['status'])];
+    }
 
     case 'match_photo_add': case 'match_photo_delete': case 'match_photo_caption': {   // v1.21 match photos
         $m = load_match(int_in($in, 'id'));

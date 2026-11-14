@@ -678,11 +678,17 @@ App.createMatch = e => {
 async function viewMatch(id) {
   id = +id;
   if (!S.m || S.m.match.id !== id) {
-    S.mTab = 'card'; S.cardInn = null; S.squads = null; S.toss = {}; S.op = {}; S.bnc = false;
+    S.mTab = 'card'; S.cardInn = null; S.squads = null; S.toss = {}; S.op = {}; S.bnc = false; S.mViewers = 0;
     mount(topbar('Match', { back: true }) + `<div class="content">${sk(3)}</div>`, S.user ? 'matches' : null);
   }
   S.m = await api('match_get', { id });
   drawMatch(true);
+  if (S.m.match.status === 'live' && S.m.can_edit) {   // v1.37: the scorer's screen sends a heartbeat and shows how many are watching
+    S.timers.push(setInterval(async () => {
+      if (document.hidden || location.hash !== '#/match/' + id || !S.m || S.m.match.id !== id) return;
+      try { const r = await api('match_viewers', { id }); S.mViewers = r.viewers; const el = document.getElementById('vwPill'); if (el) { el.hidden = !r.viewers; el.querySelector('span').textContent = r.viewers; } } catch (e) { /* ignore */ }
+    }, 20000));
+  }
   if (S.m.match.status === 'live' && !S.m.can_edit) {
     S.timers.push(setInterval(async () => {
       if (document.hidden || location.hash !== '#/match/' + id) return;
@@ -715,6 +721,8 @@ function drawMatch(first) {
       '');
   const sub = [m.visibility === 'private' ? '🔒 Private' : '', m.scorer && st.can_edit && !st.is_owner ? '✍️ You are the scorer' : m.scorer ? '✍️ Scorer: ' + m.scorer.display_name : '', m.title, m.tournament?.name].filter(Boolean).join(' · ');
   let html = topbar(`${t1.short_name} vs ${t2.short_name}`, { back: true, actions, sub });
+  if (st.viewers != null) S.mViewers = st.viewers;
+  if (m.status === 'live') html += `<div class="vw-pill" id="vwPill" ${S.mViewers ? '' : 'hidden'}><i></i><span>${S.mViewers || 0}</span> watching</div>`;   // v1.37
   // v1.31: which tournament this match belongs to - tap to open it
   if (m.tournament) html += `<a class="tour-link" href="#/tournament/${m.tournament.id}"><span style="font-size:20px">🏆</span><span class="grow ellipsis">Part of <b>${esc(m.tournament.name)}</b>${m.stage && m.stage !== 'league' && STAGE[m.stage] ? ` · ${STAGE[m.stage]}` : m.title ? ` · ${esc(m.title)}` : ''}</span><span class="small" style="font-weight:800;white-space:nowrap">Points & fixtures ›</span></a>`;
   const inn = st.innings.length ? curInn() : null;

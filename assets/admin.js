@@ -57,6 +57,7 @@ const Admin = (() => {
     const d = await api('admin_users', { q: userQ, page: userPage });
     const pages = Math.max(1, Math.ceil(d.total / d.per));
     mount(frame(`<form class="row" onsubmit="Admin.userSearch(event)"><input class="input grow" name="q" value="${esc(userQ)}" placeholder="Search name, username or ID" autocapitalize="none"><button class="btn sm">Search</button>${userQ ? `<button type="button" class="btn sm light" onclick="Admin.userSearchClear()">All</button>` : ''}</form>
+      <button class="btn light block" style="margin-top:10px" onclick="Admin.mergeStart()">🔗 Merge two accounts of the same person</button>
       <div class="small muted" style="margin:10px 2px">${num(d.total)} player${d.total === 1 ? '' : 's'}${userQ ? ' matching' : ''} · newest first</div>
       ${d.users.length ? `<div class="card flush list">${d.users.map(u => `<div class="item" onclick="go('#/user/${u.id}')">
           <div class="grow"><div class="t">${esc(u.display_name)}${u.is_admin ? ' <span class="role-tag">admin</span>' : ''}${u.verified ? ' ✅' : ''}${u.is_private ? ' 🔒' : ''}</div>
@@ -65,6 +66,26 @@ const Admin = (() => {
       ${pages > 1 ? `<div class="grid2" style="margin-top:10px"><button class="btn light" ${userPage === 0 ? 'disabled' : ''} onclick="Admin.userPage(-1)">← Newer</button><button class="btn light" ${userPage >= pages - 1 ? 'disabled' : ''} onclick="Admin.userPage(1)">Older →</button></div><div class="small muted" style="text-align:center;margin-top:6px">Page ${userPage + 1} of ${pages}</div>` : ''}`,
       'Players list'), 'more');
   }
+  /* ---------- v1.37: merge two accounts (e.g. the one made at import + one made with Gmail) ---------- */
+  A.mergeStart = (a = '', b = '') => sheet(`<h3>🔗 Merge two accounts</h3><div class="sub">For one person with two logins - e.g. the account made for them at import (WhatsApp number) and one they made themselves with Gmail. Everything moves into the account you keep, and they can then sign in with <b>either</b> WhatsApp or Gmail.</div>
+    <form onsubmit="Admin.mergePreview(event)"><div class="grid2"><div class="field"><label>Account 1 (username)</label><input class="input" name="a" value="${esc(a)}" autocapitalize="none" placeholder="e.g. arjunj9750" required></div>
+      <div class="field"><label>Account 2 (username)</label><input class="input" name="b" value="${esc(b)}" autocapitalize="none" placeholder="e.g. arjun2705" required></div></div>
+    <button class="btn block">Compare →</button></form>`);
+  A.mergePreview = e => { e.preventDefault(); const f = formData(e.target); run(async () => { const d = await api('admin_merge_preview', f); mergeSheet(d); }, e.submitter); };
+  function mergeSheet(d) {
+    const card = (x, k) => `<label class="card" style="display:block;padding:10px 12px;margin-bottom:8px;cursor:pointer"><div class="row"><input type="radio" name="keep" value="${x.id}" ${k ? 'checked' : ''}><div class="grow"><b>${esc(x.display_name)}</b> <span class="small muted">@${esc(x.username)}</span>${x.placeholder ? ' <span class="role-tag">not claimed</span>' : ''}${x.is_admin ? ' <span class="role-tag">admin</span>' : ''}
+        <div class="small">${[x.mobile ? '📱 ' + esc(x.mobile) + (x.mobile_verified ? ' ✓' : '') : '', x.google ? '🇬 ' + esc(x.google) : '', x.has_password ? '🔑 password' : ''].filter(Boolean).join(' · ') || 'no sign-in yet'}</div>
+        <div class="small muted">${x.player ? '🏏 ' + esc(x.player) : 'no player linked'}${x.family ? ' · ' + x.family + ' family' : ''} · ${x.matches} matches · ${x.teams} teams · ${x.followers} followers${x.created_at ? ' · joined ' + fmtDate(x.created_at, false) : ''}</div></div></div></label>`;
+    // suggest keeping the one the person actually uses (claimed / Google / password)
+    const score = x => (x.placeholder ? 0 : 4) + (x.google ? 2 : 0) + (x.has_password ? 1 : 0) + (x.is_admin ? 10 : 0);
+    const keepA = score(d.a) >= score(d.b);
+    sheet(`<h3>🔗 Which account stays?</h3><div class="sub">Tap the one to keep. The other one is folded into it and then deleted: its WhatsApp number, Gmail, player, family profiles, matches, teams and followers all move over. <b>This cannot be undone.</b></div>
+      <form onsubmit="Admin.mergeGo(event,${d.a.id},${d.b.id})">${card(d.a, keepA)}${card(d.b, !keepA)}
+      <div class="field"><label>Username afterwards</label><select class="input" name="username"><option value="keep">Keep the kept account's username</option><option value="drop">Use the other account's username</option></select></div>
+      <button class="btn block" style="background:var(--red);color:#fff">Merge accounts</button></form>`);
+  }
+  A.mergeGo = (e, a, b) => { e.preventDefault(); const f = formData(e.target); const keep = +[...e.target.querySelectorAll('input[name=keep]')].find(r => r.checked).value; const drop = keep === a ? b : a;
+    run(async () => { const r = await api('admin_merge_users', { keep, drop, username: f.username }); closeSheet(); toast(`Merged ✓ - now @${r.user.username}`); users(); }, e.submitter); };
   A.userSearch = e => { e.preventDefault(); userQ = formData(e.target).q.trim(); userPage = 0; users(); };
   A.userSearchClear = () => { userQ = ''; userPage = 0; users(); };
   A.userPage = d => { userPage = Math.max(0, userPage + d); users(); };

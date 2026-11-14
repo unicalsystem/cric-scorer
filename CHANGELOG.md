@@ -4,6 +4,10 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.37.0 - 14 November 2026
+- **Live viewers**: a live match shows "🔴 12 watching" at the top - everyone with the match open (signed in or guests) in the last 45 seconds; the scorer sees it too
+- **Admin → 👥 Players → 🔗 Merge two accounts**: for one person with two logins (e.g. the account made at import with their WhatsApp number and one they made with Gmail). Compare both, pick which stays, and everything moves into it - WhatsApp number, Gmail sign-in, password, player, family profiles, matches, teams, tournaments, followers; empty profile details are filled from the other; the person can then sign in with WhatsApp or Gmail. Choose which username survives
+
 ## 1.36.1 - 14 November 2026
 - Switch profile moved to the top-right of Home (initials + first name ▾) and into More → Switch profile; it only appears when more than one family member shares the login
 - Fix: the Switch button on Home did not respond (a decorative circle in the header was covering it)

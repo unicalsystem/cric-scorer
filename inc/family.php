@@ -172,7 +172,7 @@ function admin_import_players(array $u, array $in): array {
 
 function admin_import_list(): array {
     $out = [];
-    foreach (rows('SELECT b.*, u.display_name FROM import_batches b LEFT JOIN users u ON u.id=b.created_by ORDER BY b.id DESC LIMIT 30') as $b) {
+    foreach (rows("SELECT b.*, u.display_name FROM import_batches b LEFT JOIN users u ON u.id=b.created_by WHERE b.info IS NULL OR b.info NOT LIKE '{\"merge\"%' ORDER BY b.id DESC LIMIT 30") as $b) {
         $i = json_decode((string)$b['info'], true) ?: [];
         $ids = array_map('intval', $i['players'] ?? []);
         $played = $ids ? (int)val('SELECT COUNT(DISTINCT player_id) FROM match_players WHERE player_id IN (' . implode(',', $ids) . ')') : 0;
@@ -327,4 +327,89 @@ function admin_create_accounts(array $u, int $batchId): array {
     q('INSERT INTO import_batches (label, created_by, info) VALUES (?,?,?)', ['Accounts for: ' . $b['label'], $u['id'], json_encode(['players' => [], 'users' => $made, 'family' => $fam, 'for_batch' => $batchId])]);
     db()->commit();
     return ['accounts' => count($made), 'family' => count($fam), 'holders' => count($head)];
+}
+
+/* ---------- v1.37: admin merges two accounts of the same person (e.g. the one made at import + one made with Gmail) ---------- */
+
+const MERGE_FIELDS = ['mobile', 'mobile_verified_at', 'google_sub', 'email', 'avatar_url', 'avatar_preset', 'password_hash', 'bio', 'role', 'batting_style', 'bowling_style',
+                      'experience_years', 'dob', 'dob_exact', 'gender', 'address', 'country', 'state', 'city', 'terms_accepted_at'];
+
+function merge_user_summary(array $x): array {
+    $id = (int)$x['id'];
+    $pl = $x['player_id'] ? row('SELECT p.name, t.name team FROM players p JOIN teams t ON t.id=p.team_id WHERE p.id=?', [$x['player_id']]) : null;
+    return ['id' => $id, 'username' => $x['username'], 'display_name' => $x['display_name'], 'created_at' => $x['created_at'] ?? null, 'last_seen_at' => $x['last_seen_at'] ?? null,
+        'mobile' => $x['mobile'] ? pretty_mobile($x['mobile']) : null, 'mobile_verified' => !empty($x['mobile_verified_at']), 'google' => $x['email'] ?? (!empty($x['google_sub']) ? 'Google' : null),
+        'has_password' => (string)$x['password_hash'] !== '', 'placeholder' => !empty($x['placeholder']), 'is_admin' => !empty($x['is_admin']),
+        'player' => $pl ? $pl['name'] . ' · ' . $pl['team'] : null,
+        'family' => (int)val('SELECT COUNT(*) FROM family_profiles WHERE user_id=?', [$id]),
+        'matches' => (int)val('SELECT COUNT(*) FROM matches WHERE owner_id=? OR scorer_id=?', [$id, $id]),
+        'teams' => (int)val('SELECT COUNT(*) FROM teams WHERE owner_id=?', [$id]),
+        'followers' => (int)val('SELECT COUNT(*) FROM follows WHERE followee_id=?', [$id])];
+}
+
+function admin_merge_preview(array $in): array {
+    $a = row('SELECT * FROM users WHERE username=?', [strtolower(trim((string)($in['a'] ?? '')))]);
+    $b = row('SELECT * FROM users WHERE username=?', [strtolower(trim((string)($in['b'] ?? '')))]);
+    if (!$a || !$b) fail('Enter two existing usernames');
+    if ((int)$a['id'] === (int)$b['id']) fail('That is the same account twice');
+    return ['a' => merge_user_summary($a), 'b' => merge_user_summary($b)];
+}
+
+/**
+ * Fold account $dropId into $keepId: sign-in methods (number, Google, password), the linked player, family profiles,
+ * matches, teams, tournaments, follows and everything else move over; empty profile details are filled from the other
+ * account; then the other account is deleted. $username: 'keep' or 'drop' - which username survives.
+ */
+function admin_merge_users(array $u, array $in): array {
+    $keep = row('SELECT * FROM users WHERE id=?', [(int)($in['keep'] ?? 0)]);
+    $drop = row('SELECT * FROM users WHERE id=?', [(int)($in['drop'] ?? 0)]);
+    if (!$keep || !$drop || (int)$keep['id'] === (int)$drop['id']) fail('Pick two different accounts');
+    if (!empty($drop['is_admin']) && empty($keep['is_admin'])) fail('Keep the administrator account, not the other one');
+    $K = (int)$keep['id']; $D = (int)$drop['id'];
+    db()->beginTransaction();
+    // 1. profile fields: copy what the kept account is missing (unique ones are freed on the other account first)
+    $set = []; $vals = [];
+    foreach (MERGE_FIELDS as $f) {
+        if (!array_key_exists($f, $keep)) continue;
+        $empty = $keep[$f] === null || $keep[$f] === '' || ($f === 'dob_exact' && !$keep['dob']);
+        if ($empty && $drop[$f] !== null && $drop[$f] !== '') { $set[] = "$f=?"; $vals[] = $drop[$f]; }
+    }
+    if ($drop['mobile'] && $keep['mobile'] && $drop['mobile'] !== $keep['mobile'] && !$keep['mobile_verified_at'] && $drop['mobile_verified_at']) {   // prefer the verified number
+        $set[] = 'mobile=?'; $vals[] = $drop['mobile']; $set[] = 'mobile_verified_at=?'; $vals[] = $drop['mobile_verified_at'];
+    }
+    $usernameFromDrop = ($in['username'] ?? 'keep') === 'drop';
+    q('UPDATE users SET mobile=NULL, google_sub=NULL, player_id=NULL, username=? WHERE id=?', ['merged_' . $D . '_' . bin2hex(random_bytes(3)), $D]);
+    if ($usernameFromDrop) { $set[] = 'username=?'; $vals[] = $drop['username']; }
+    if (!empty($drop['is_admin'])) $set[] = 'is_admin=1';
+    $set[] = 'placeholder=?'; $vals[] = (!empty($keep['placeholder']) && !empty($drop['placeholder'])) ? 1 : 0;
+    // 2. linked players: keep the kept account's own player; the other one's player becomes a family profile
+    $dropPid = $drop['player_id'] ? (int)$drop['player_id'] : null;
+    if (!$keep['player_id'] && $dropPid) { $set[] = 'player_id=?'; $vals[] = $dropPid; $dropPid = null; }
+    q('UPDATE users SET ' . implode(', ', $set) . ' WHERE id=?', array_merge($vals, [$K]));
+    if ($dropPid && !val('SELECT 1 FROM family_profiles WHERE player_id=?', [$dropPid])) q('INSERT INTO family_profiles (player_id, user_id) VALUES (?,?)', [$dropPid, $K]);
+    // 3. everything the other account owns or did
+    foreach (['academies.owner_id', 'academy_students.user_id', 'auc_events.user_id', 'auc_rooms.host_id', 'grounds.owner_id', 'lookings.user_id', 'looking_replies.user_id',
+              'matches.owner_id', 'matches.scorer_id', 'match_log.user_id', 'match_photos.user_id', 'match_types.owner_id', 'teams.owner_id', 'tournaments.owner_id',
+              'tickets.user_id', 'import_batches.created_by', 'games.p0', 'games.p1', 'family_profiles.user_id'] as $tc) {
+        [$t, $c] = explode('.', $tc);
+        if (val("SHOW TABLES LIKE '$t'") && val("SHOW COLUMNS FROM `$t` LIKE '$c'")) q("UPDATE `$t` SET `$c`=? WHERE `$c`=?", [$K, $D]);
+    }
+    q('UPDATE matches SET scorer_id=NULL WHERE scorer_id=owner_id');
+    q('DELETE FROM family_profiles WHERE user_id=? AND player_id=(SELECT player_id FROM users WHERE id=?)', [$K, $K]);   // own player is not a family profile
+    // tables with a unique key per user: move what doesn't clash, drop the rest
+    foreach ([['follows', 'follower_id'], ['follows', 'followee_id'], ['team_access', 'user_id'], ['feature_users', 'user_id'], ['academy_progress', 'user_id'],
+              ['auc_participants', 'user_id'], ['game_profiles', 'user_id']] as [$t, $c]) {
+        if (!val("SHOW TABLES LIKE '$t'")) continue;
+        q("UPDATE IGNORE `$t` SET `$c`=? WHERE `$c`=?", [$K, $D]);
+        q("DELETE FROM `$t` WHERE `$c`=?", [$D]);
+    }
+    q('DELETE FROM follows WHERE follower_id=followee_id');
+    q('DELETE FROM team_access WHERE user_id=? AND team_id IN (SELECT id FROM teams WHERE owner_id=?)', [$K, $K]);
+    q('DELETE FROM user_tokens WHERE user_id=?', [$D]);
+    q('DELETE FROM otp_tokens WHERE user_id=?', [$D]);
+    q('DELETE FROM users WHERE id=?', [$D]);
+    q('INSERT INTO import_batches (label, created_by, info, undone_at) VALUES (?,?,?,NOW())', ['Merged @' . $drop['username'] . ' into @' . ($usernameFromDrop ? $drop['username'] : $keep['username']) . ' (cannot be undone)', $u['id'],
+      json_encode(['merge' => ['kept' => $K, 'removed' => $D, 'removed_username' => $drop['username']]])]);
+    db()->commit();
+    return ['user' => merge_user_summary(row('SELECT * FROM users WHERE id=?', [$K]))];
 }

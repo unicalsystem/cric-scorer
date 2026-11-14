@@ -667,3 +667,7 @@ body:not(.app-mode) #tabbar{display:none!important}
 .badge.logo{background:#fff;padding:2px;border:2px solid #ddd;overflow:hidden}
 .badge.logo img{width:100%;height:100%;object-fit:contain;display:block}
 .logo-cam{position:absolute;right:-6px;bottom:-6px;background:#fff;border-radius:50%;width:24px;height:24px;display:grid;place-items:center;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer}
+/* v1.37: live viewers on the match screen */
+.vw-pill{position:fixed;top:calc(var(--safe-t, 0px) + 64px);right:12px;z-index:30;display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px;pointer-events:none}
+.vw-pill i{width:8px;height:8px;border-radius:50%;background:#ff3b3b;box-shadow:0 0 0 0 rgba(255,59,59,.7);animation:vwpulse 1.6s infinite}
+@keyframes vwpulse{0%{box-shadow:0 0 0 0 rgba(255,59,59,.7)}70%{box-shadow:0 0 0 8px rgba(255,59,59,0)}100%{box-shadow:0 0 0 0 rgba(255,59,59,0)}}

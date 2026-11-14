@@ -274,6 +274,8 @@ function admin_action(string $action, array $u, array $in) {
 
     case 'admin_import_players': return admin_import_players($u, $in);          // v1.34
     case 'admin_import_list': return admin_import_list();
+    case 'admin_merge_preview': return admin_merge_preview($in);                // v1.37
+    case 'admin_merge_users': return admin_merge_users($u, $in);
     case 'admin_create_accounts': return admin_create_accounts($u, (int)($in['id'] ?? 0));
     case 'admin_import_undo': return admin_import_undo((int)($in['id'] ?? 0));
     case 'admin_player_search': return admin_player_search($in);
