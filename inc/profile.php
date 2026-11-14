@@ -20,6 +20,16 @@ function cricket_profile(array $r): array {
             'avatar_preset' => $r['avatar_preset'] ?? null, 'player' => $p];
 }
 
+/** v1.32: whole years since a date of birth (today, server time) */
+function age_from_dob(?string $dob): ?int {
+    if (!$dob) return null;
+    try { return (new DateTime($dob))->diff(new DateTime('today'))->y; } catch (Throwable $e) { return null; }
+}
+function schema_v132(): void {
+    if (!val("SHOW COLUMNS FROM users LIKE 'dob'")) db()->exec("ALTER TABLE users ADD COLUMN dob DATE NULL AFTER experience_years, ADD COLUMN dob_exact TINYINT(1) NOT NULL DEFAULT 0 AFTER dob");
+    if (!val("SHOW COLUMNS FROM users LIKE 'gender'")) db()->exec("ALTER TABLE users ADD COLUMN gender CHAR(1) NULL AFTER dob_exact, ADD COLUMN address VARCHAR(250) NULL AFTER gender");
+}
+
 /** Save the editable profile fields sent from My Profile */
 function profile_fields_save(array $u, array $in): void {
     $set = []; $vals = [];
@@ -31,6 +41,37 @@ function profile_fields_save(array $u, array $in): void {
         $e = $in['experience_years'];
         $set[] = 'experience_years=?'; $vals[] = ($e === '' || $e === null) ? null : max(0, min(60, (int)$e));
     }
+    // v1.32: age - a date of birth, or an age that is turned into an approximate birth date (so it goes up by 1 every year from the day it was entered)
+    if (array_key_exists('age_mode', $in)) {
+        $dob = null; $exact = 0;
+        if ($in['age_mode'] === 'dob' && !empty($in['dob'])) {
+            $d = DateTime::createFromFormat('!Y-m-d', (string)$in['dob']);
+            if (!$d || $d->format('Y-m-d') !== (string)$in['dob']) fail('Enter your date of birth as a full date');
+            $dob = $d->format('Y-m-d'); $exact = 1;
+        } elseif ($in['age_mode'] === 'age' && ($in['age'] ?? '') !== '' && $in['age'] !== null) {
+            $a = (int)$in['age'];
+            if ($a < 3 || $a > 100) fail('Enter an age between 3 and 100');
+            $keep = row('SELECT dob, dob_exact FROM users WHERE id=?', [$u['id']]);
+            if ($keep && $keep['dob'] && !$keep['dob_exact'] && age_from_dob($keep['dob']) === $a) $dob = $keep['dob'];   // unchanged age: keep its anniversary
+            else $dob = (new DateTime('today'))->modify("-$a years")->format('Y-m-d');
+        }
+        if ($dob) {
+            $age = age_from_dob($dob);
+            if ($age < 3 || $age > 100) fail('That date of birth gives an age of ' . $age . ' - please check it');
+        }
+        $set[] = 'dob=?'; $vals[] = $dob; $set[] = 'dob_exact=?'; $vals[] = $exact;
+        // fill the birth year of the player linked to this account when the club didn't have it yet (club league age categories)
+        $pid = array_key_exists('player_id', $in) ? nint($in['player_id']) : nint(val('SELECT player_id FROM users WHERE id=?', [$u['id']]));
+        if ($dob && $pid) q('UPDATE players SET birth_year=? WHERE id=? AND birth_year IS NULL', [(int)substr($dob, 0, 4), $pid]);
+    }
+    // v1.32: gender (M / F / O = prefer not to say) and postal address - both private to the account
+    if (array_key_exists('gender', $in)) {
+        $g = in_array($in['gender'], ['M', 'F', 'O'], true) ? $in['gender'] : null;
+        $set[] = 'gender=?'; $vals[] = $g;
+        $pid = array_key_exists('player_id', $in) ? nint($in['player_id']) : nint(val('SELECT player_id FROM users WHERE id=?', [$u['id']]));
+        if ($pid && in_array($g, ['M', 'F'], true)) q('UPDATE players SET gender=? WHERE id=? AND gender IS NULL', [$g, $pid]);   // club league "min women" checks
+    }
+    if (array_key_exists('address', $in)) { $a = trim(preg_replace('/[ \t]+/u', ' ', (string)$in['address'])); $set[] = 'address=?'; $vals[] = $a === '' ? null : mb_substr($a, 0, 250); }
     if (array_key_exists('avatar_preset', $in)) { $set[] = 'avatar_preset=?'; $vals[] = in_array($in['avatar_preset'], AVATAR_PRESETS, true) ? $in['avatar_preset'] : null; }
     if (array_key_exists('player_id', $in)) {
         $pid = nint($in['player_id']);

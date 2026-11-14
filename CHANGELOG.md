@@ -4,6 +4,11 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.32.0 - 14 November 2026
+- My Profile → **About me** (private - only you see it): **Gender**, **Age** and **Address**
+- Age: type your age, or pick your date of birth. Either way it goes up by 1 automatically every year (an age you type counts from the day you entered it). Shown as "Age" on your own cricket card only
+- Your gender and birth year also fill in the player linked to your account when its club details are empty (used by club league categories)
+
 ## 1.31.0 - 14 November 2026
 - Match page: a tournament match shows "🏆 Part of <tournament> · Match 3" at the top - tap it to open the tournament (points table, fixtures, leaderboard, awards)
 

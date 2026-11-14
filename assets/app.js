@@ -1885,6 +1885,17 @@ function viewProfile() {
     <div class="field"><label>Username</label><input class="input" value="${esc(u.username)}" disabled></div>
     <div class="field" style="margin-bottom:0"><label>About me <span class="muted" id="bioCount" style="float:right">${(u.bio || '').length}/160</span></label>
       <textarea class="input" name="bio" rows="3" maxlength="160" placeholder="e.g. Opening batter who loves pull shots 🏏 Big CSK fan!" oninput="document.getElementById('bioCount').textContent=this.value.length+'/160'">${esc(u.bio || '')}</textarea></div></div>
+    <div class="section"><h2>👤 About me</h2><span class="small muted">🔒 only you see this</span></div>
+    <div class="card">
+      <div class="field"><label>Gender</label>${chips('gender', [['M', '👦 Male'], ['F', '👧 Female'], ['O', 'Prefer not to say']], u.gender)}</div>
+      <div class="field"><label>Age</label>
+        <input type="hidden" name="age_mode" id="ageMode" value="${u.dob && u.dob_exact ? 'dob' : 'age'}">
+        <div class="seg" style="margin-bottom:8px"><button type="button" class="${u.dob && u.dob_exact ? '' : 'on'}" onclick="App.ageMode('age',this)">Enter my age</button><button type="button" class="${u.dob && u.dob_exact ? 'on' : ''}" onclick="App.ageMode('dob',this)">Date of birth</button></div>
+        <div id="ageAge" style="${u.dob && u.dob_exact ? 'display:none' : ''}"><input class="input" name="age" type="number" inputmode="numeric" min="3" max="100" placeholder="e.g. 11" value="${u.age ?? ''}" style="max-width:140px"></div>
+        <div id="ageDob" style="${u.dob && u.dob_exact ? '' : 'display:none'}"><input class="input" name="dob" type="date" max="${new Date().toISOString().slice(0, 10)}" value="${u.dob && u.dob_exact ? esc(u.dob) : ''}" style="max-width:200px"></div>
+        <div class="small muted" style="margin-top:6px">${u.age != null ? `You are <b>${u.age}</b>. ` : ''}Your age goes up by 1 automatically every year${u.dob && !u.dob_exact ? ' (from the day you entered it)' : ''}.</div></div>
+      <div class="field" style="margin-bottom:0"><label>Address</label><textarea class="input" name="address" rows="2" maxlength="250" placeholder="e.g. Flat 1204, Tower G, Raheja Vistas, Nacharam">${esc(u.address || '')}</textarea></div>
+    </div>
     <div class="section"><h2>🏏 My cricket profile</h2></div>
     <div class="card">
       <div class="field"><label>I play as</label>${chips('role', [['Batter', '🏏 Batter'], ['Bowler', '🎯 Bowler'], ['All-rounder', '⭐ All-rounder'], ['Wicket-keeper', '🧤 Keeper']], u.role)}</div>
@@ -2150,6 +2161,11 @@ App.findMeSearch = q => {
   }, 250);
 };
 App.linkPlayer = id => run(async () => { await quickSave({ player_id: id }); closeSheet(); toast(id ? "Linked! Your stats will show on your profile 📊" : 'Unlinked'); refreshProfileKeepForm(); });
+App.ageMode = (mode, btn) => {
+  $('#ageMode').value = mode;
+  btn.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+  $('#ageAge').style.display = mode === 'age' ? '' : 'none'; $('#ageDob').style.display = mode === 'dob' ? '' : 'none';
+};
 App.saveProfile = e => { e.preventDefault(); run(async () => { const r = await api('profile_save', formData(e.target)); S.user = r.user; toast('Profile saved'); go('#/more'); }, e.submitter); };
 
 /* ---------- Help & feedback (players write to the admin; replies show here) ---------- */
@@ -2348,6 +2364,7 @@ function cricketCard(u, me) {
     ['I play as', u.role ? (ROLE_ICON[u.role] || '') + ' ' + u.role : null],
     ['Batting', u.batting_style], ['Bowling', u.bowling_style],
     ['Experience', u.experience_years != null ? (u.experience_years === 0 ? 'Just starting!' : plural(u.experience_years, 'year')) : null],
+    ['Age', me && u.age != null ? `${u.age} years 🔒` : null],
   ].filter(r => r[1]);
   if (!rows.length) return me ? `<div class="card empty small" style="padding:14px">Fill in your cricket profile in <a class="link" href="#/profile">My Profile</a> 🏏</div>` : '';
   return `<div class="section"><h2>🏏 Cricket profile</h2></div><div class="card flush">${rows.map(([k, v], i) => `<div class="kv" ${i ? '' : 'style="border-top:0"'}><span>${k}</span><span>${esc(v)}</span></div>`).join('')}</div>`;
