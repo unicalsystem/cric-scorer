@@ -2181,6 +2181,7 @@ App.geoInit = async (u) => {
 };
 App.geoCountry = async (cc, state, city) => {
   const st = $('#geoState'); if (!st) return;
+  if ($('#geoCountry').value !== cc) $('#geoCountry').value = cc;
   st.innerHTML = '<option value="">' + (cc ? 'Loading…' : '-') + '</option>'; $('#geoCity').innerHTML = '<option value="">-</option>';
   if (!cc) return App.geoCity('');
   try { GEO.states[cc] = GEO.states[cc] || await geoJSON(`assets/geo/c/${cc}.json?v=${window.CS_VERSION}`); } catch (e) { GEO.states[cc] = []; }
