@@ -113,6 +113,7 @@ function handle(string $action, array $in, ?array $u) {
         $un = strtolower(str_in($in, 'username', 50));
         $nu = row('SELECT * FROM users WHERE username=?', [$un]);
         if ($nu && (string)$nu['password_hash'] === '' && !empty($nu['google_sub'])) fail('This player signs in with Google - tap "Sign in with Google"');
+        if ($nu && (string)$nu['password_hash'] === '' && (!empty($nu['placeholder']) || !empty($nu['mobile']))) fail('This account signs in with WhatsApp - tap "Sign in with WhatsApp" and use your number');   // v1.35
         if (!$nu || !password_verify((string)($in['password'] ?? ''), $nu['password_hash'])) { usleep(600000); fail('Wrong username or password'); }
         login_user($nu, !isset($in['remember']) || $in['remember']);
         return ['user' => public_user($nu)];
@@ -138,6 +139,11 @@ function handle(string $action, array $in, ?array $u) {
         $dn = str_in($in, 'display_name', 100);
         if ($dn === '') fail('Enter a name');
         q('UPDATE users SET display_name=? WHERE id=?', [$dn, $u['id']]);
+        if (isset($in['username']) && ($un = strtolower(trim((string)$in['username']))) !== $u['username']) {   // v1.35: players can pick their own username
+            if (!preg_match('/^[a-z0-9_.]{3,30}$/', $un)) fail('Username: 3–30 letters, numbers, dot or underscore');
+            if (val('SELECT 1 FROM users WHERE username=? AND id<>?', [$un, $u['id']])) fail('That username is taken');
+            q('UPDATE users SET username=? WHERE id=?', [$un, $u['id']]);
+        }
         if (isset($in['is_private'])) q('UPDATE users SET is_private=? WHERE id=?', [!empty($in['is_private']) ? 1 : 0, $u['id']]);
         profile_fields_save($u, $in);
         if (!empty($in['new_password'])) {

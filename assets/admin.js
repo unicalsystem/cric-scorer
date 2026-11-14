@@ -209,10 +209,13 @@ const Admin = (() => {
           ${b.undone_at ? '<span class="role-tag">undone</span>' : ''}</div>
           <div class="small" style="margin:6px 0">${b.players} players · ${b.linked} logins linked · ${b.family} family links${b.undone_at ? ' · undone ' + fmtDate(b.undone_at) : ''}${b.played ? ` · <b>${b.played} have played</b>` : ''}</div>
           ${b.teams.length ? `<div class="small muted">${b.teams.map(t => `${esc(t.name)}: ${t.n}`).join(' · ')}</div>` : ''}
-          ${b.undone_at ? '' : `<button class="btn ${b.played ? 'light' : ''} block" style="margin-top:10px;${b.played ? '' : 'background:var(--red);color:#fff'}" ${b.played ? 'disabled' : ''} onclick="Admin.importUndo(${b.id},${b.players})">↩️ ${b.played ? 'Cannot undo - players have played' : 'Undo this import'}</button>`}</div>`).join('')
+          ${b.accounts ? `<div class="small" style="margin-top:4px">👤 ${b.accounts} accounts · ${b.claimed} claimed by their players</div>` : ''}
+          ${!b.undone_at && b.players && !d.imports.some(x => x.for_batch === b.id && !x.undone_at) ? `<button class="btn light block" style="margin-top:10px" onclick="Admin.makeAccounts(${b.id})">👤 Create player accounts</button>` : ''}
+          ${b.undone_at ? '' : `<button class="btn ${b.played ? 'light' : ''} block" style="margin-top:10px;${b.played ? '' : 'background:var(--red);color:#fff'}" ${b.played ? 'disabled' : ''} onclick="Admin.importUndo(${b.id},${b.players || b.accounts},${b.accounts ? 1 : 0})">↩️ ${b.played ? 'Cannot undo - players have played' : b.accounts ? 'Undo - remove these accounts' : 'Undo this import'}</button>`}</div>`).join('')
         : '<div class="card empty"><div class="big">📥</div>No imports yet.</div>'}`, 'Imports'), 'more');
   }
-  A.importUndo = (id, n) => confirmSheet('Undo this import?', `All ${n} players it added are removed, with the logins and family links it made. Teams, matches and other players stay as they are.`, 'Undo import', () => run(async () => { const d = await api('admin_import_undo', { id }); closeSheet(); toast(`${d.removed} players removed ✓`); imports(d); }));
+  A.makeAccounts = id => confirmSheet('Create player accounts?', 'Each player without a login gets a registered account (username = name + last 4 digits of the number). The oldest person on each WhatsApp number claims it with a WhatsApp code; others on that number become their family profiles. This can be undone from this page.', 'Create accounts', () => run(async () => { const r = await api('admin_create_accounts', { id }); closeSheet(); toast(`${r.accounts} accounts created ✓`); imports(); }), false);
+  A.importUndo = (id, n, acc) => confirmSheet(acc ? 'Remove these accounts?' : 'Undo this import?', acc ? `The ${n} accounts made for imported players are deleted (only while nobody has claimed theirs). The players stay in their teams.` : `All ${n} players it added are removed, with the logins and family links it made. Teams, matches and other players stay as they are.`, 'Undo import', () => run(async () => { const d = await api('admin_import_undo', { id }); closeSheet(); toast(`${d.removed} players removed ✓`); imports(d); }));
 
   return A;
 })();

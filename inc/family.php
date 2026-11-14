@@ -27,7 +27,7 @@ function schema_v134(): void {
 function user_profiles(int $uid): array {
     $own = (int)val('SELECT player_id FROM users WHERE id=?', [$uid]);
     $list = rows('SELECT p.id, p.name, p.gender, p.birth_year, t.id team_id, t.name team, t.short_name, t.color,
-                    (SELECT username FROM users x WHERE x.player_id=p.id LIMIT 1) login
+                    (SELECT username FROM users x WHERE x.player_id=p.id AND (x.placeholder=0 OR x.mobile IS NOT NULL) LIMIT 1) login
                   FROM players p JOIN teams t ON t.id=p.team_id
                   WHERE p.id=? OR p.id IN (SELECT player_id FROM family_profiles WHERE user_id=?)', [$own, $uid]);
     $out = [];
@@ -77,15 +77,17 @@ function family_create_login(array $u, array $in): array {
     $pid = (int)($in['player_id'] ?? 0);
     if (!manages_player($u, $pid)) fail('You can only make a login for your own family profiles', 403);
     if ((int)val('SELECT player_id FROM users WHERE id=?', [$u['id']]) === $pid && empty($u['is_admin'])) fail("That's your own profile");
-    if ($x = val('SELECT username FROM users WHERE player_id=?', [$pid])) fail("This profile already has a login: @$x");
+    $ex = row('SELECT id, username, placeholder, mobile FROM users WHERE player_id=?', [$pid]);
+    if ($ex && (!$ex['placeholder'] || $ex['mobile'])) fail("This profile already has a login: @{$ex['username']}");
     $p = row('SELECT id, name FROM players WHERE id=?', [$pid]);
     if (!$p) fail('Player not found');
     $un = strtolower(trim((string)($in['username'] ?? '')));
     $pw = (string)($in['password'] ?? '');
     if (!preg_match('/^[a-z0-9_.]{3,30}$/', $un)) fail('Username: 3–30 letters, numbers, dot or underscore');
     if (strlen($pw) < 6) fail('Password must be at least 6 characters');
-    if (val('SELECT 1 FROM users WHERE username=?', [$un])) fail('That username is taken');
-    q('INSERT INTO users (username, password_hash, display_name, player_id, terms_accepted_at) VALUES (?,?,?,?,NOW())', [$un, password_hash($pw, PASSWORD_DEFAULT), $p['name'], $pid]);
+    if (val('SELECT 1 FROM users WHERE username=? AND id<>?', [$un, $ex['id'] ?? 0])) fail('That username is taken');
+    if ($ex) q('UPDATE users SET username=?, password_hash=?, placeholder=0, terms_accepted_at=NOW() WHERE id=?', [$un, password_hash($pw, PASSWORD_DEFAULT), $ex['id']]);   // the account made at import
+    else q('INSERT INTO users (username, password_hash, display_name, player_id, terms_accepted_at) VALUES (?,?,?,?,NOW())', [$un, password_hash($pw, PASSWORD_DEFAULT), $p['name'], $pid]);
     // the parent keeps managing this profile (switch profile), so make sure the family link exists
     if (!val('SELECT 1 FROM family_profiles WHERE player_id=?', [$pid]) && empty($u['is_admin'])) q('INSERT INTO family_profiles (player_id, user_id) VALUES (?,?)', [$pid, $u['id']]);
     return ['username' => $un, 'profiles' => user_profiles((int)$u['id'])];
@@ -176,7 +178,9 @@ function admin_import_list(): array {
         $played = $ids ? (int)val('SELECT COUNT(DISTINCT player_id) FROM match_players WHERE player_id IN (' . implode(',', $ids) . ')') : 0;
         $left = $ids ? (int)val('SELECT COUNT(*) FROM players WHERE id IN (' . implode(',', $ids) . ')') : 0;
         $teams = $ids ? rows('SELECT t.name, COUNT(*) n FROM players p JOIN teams t ON t.id=p.team_id WHERE p.id IN (' . implode(',', $ids) . ') GROUP BY t.name ORDER BY t.name') : [];
-        $out[] = ['id' => (int)$b['id'], 'label' => $b['label'], 'by' => $b['display_name'], 'at' => $b['created_at'], 'undone_at' => $b['undone_at'],
+        $uids = array_map('intval', $i['users'] ?? []);
+        $claimed = $uids ? (int)val('SELECT COUNT(*) FROM users WHERE placeholder=0 AND id IN (' . implode(',', $uids) . ')') : 0;
+        $out[] = ['id' => (int)$b['id'], 'label' => $b['label'], 'accounts' => count($uids), 'claimed' => $claimed, 'for_batch' => $i['for_batch'] ?? null, 'by' => $b['display_name'], 'at' => $b['created_at'], 'undone_at' => $b['undone_at'],
                   'players' => count($ids), 'still_there' => $left, 'played' => $played, 'linked' => count($i['own'] ?? []), 'family' => count($i['family'] ?? []), 'teams' => $teams];
     }
     return ['imports' => $out];
@@ -191,7 +195,14 @@ function admin_import_undo(int $bid): array {
     $ids = array_map('intval', $i['players'] ?? []);
     if ($ids && val('SELECT 1 FROM match_players WHERE player_id IN (' . implode(',', $ids) . ') LIMIT 1'))
         fail('Some of these players have already played a match - fix them one by one under Admin → Players instead');
+    $uids = array_map('intval', $i['users'] ?? []);
+    if ($uids && ($n = (int)val('SELECT COUNT(*) FROM users WHERE placeholder=0 AND id IN (' . implode(',', $uids) . ')')))
+        fail("$n of these accounts have already been claimed by their players - remove them one by one instead");
+    if ($ids && ($acc = row("SELECT id FROM import_batches WHERE undone_at IS NULL AND info LIKE ?", ['%\"for_batch\":' . $bid . '}%'])))
+        fail('Undo "Accounts for…" (import #' . $acc['id'] . ') first');
     db()->beginTransaction();
+    foreach ($i['family'] ?? [] as $f) q('DELETE FROM family_profiles WHERE player_id=? AND user_id=?', [$f['player_id'], $f['user_id']]);
+    if ($uids) q('DELETE FROM users WHERE placeholder=1 AND id IN (' . implode(',', $uids) . ')');
     foreach ($i['own'] ?? [] as $o) q('UPDATE users SET player_id=? WHERE id=? AND player_id=?', [$o['old'] ?? null, $o['user_id'], $o['player_id']]);
     if ($ids) {
         $in_ = implode(',', $ids);
@@ -263,4 +274,57 @@ function admin_player_delete(int $pid): array {
     q('UPDATE teams SET captain=NULL WHERE id=? AND captain=?', [$p['team_id'], $p['name']]);
     q('DELETE FROM players WHERE id=?', [$pid]);
     return ['ok' => true];
+}
+
+/* ---------- v1.35: accounts for imported players (claimed later with a WhatsApp code) ---------- */
+
+function schema_v135(): void {
+    if (!val("SHOW COLUMNS FROM users LIKE 'placeholder'")) db()->exec("ALTER TABLE users ADD COLUMN placeholder TINYINT(1) NOT NULL DEFAULT 0 AFTER is_admin");
+}
+
+/** name + last 4 digits of the number (or the flat's digits), e.g. arjunj9750 - unique, never the full number */
+function username_for(string $name, ?string $mobile, ?string $flat): string {
+    $base = substr(preg_replace('/[^a-z0-9]/', '', strtolower(iconv('UTF-8', 'ASCII//TRANSLIT', $name) ?: $name)), 0, 20) ?: 'player';
+    $tail = $mobile ? substr($mobile, -4) : (preg_replace('/\D/', '', (string)$flat) ?: '');
+    $un = $base . $tail; if (strlen($un) < 3) $un .= 'rv';
+    $try = $un; $n = 1;
+    while (val('SELECT 1 FROM users WHERE username=?', [$try])) $try = $un . '_' . (++$n);
+    return $try;
+}
+
+/**
+ * Give every player of an import who has no login a registered account (shown under players in the app).
+ * The oldest person on each WhatsApp number holds that number (unverified) and claims the account with a WhatsApp
+ * code; the others on the number get their own account without a number and become that person's family profiles.
+ */
+function admin_create_accounts(array $u, int $batchId): array {
+    $b = row('SELECT * FROM import_batches WHERE id=? AND undone_at IS NULL', [$batchId]);
+    if (!$b) fail('Import not found');
+    $pids = array_map('intval', (json_decode((string)$b['info'], true) ?: [])['players'] ?? []);
+    if (!$pids) fail('No players in that import');
+    $ps = rows('SELECT * FROM players WHERE id IN (' . implode(',', $pids) . ') ORDER BY COALESCE(birth_year, 9999) ASC, id ASC');
+    db()->beginTransaction();
+    $made = []; $fam = []; $head = [];                   // number => user id that holds it
+    $year = (int)date('Y');
+    foreach ($ps as $p) {
+        if (val('SELECT 1 FROM users WHERE player_id=?', [$p['id']])) {   // already has a login (e.g. you, @aarush)
+            if ($p['mobile'] && !isset($head[$p['mobile']]) && ($x = val('SELECT id FROM users WHERE mobile=?', [$p['mobile']]))) $head[$p['mobile']] = (int)$x;
+            continue;
+        }
+        $mob = $p['mobile'];
+        $holder = $mob ? ($head[$mob] ?? (int)val('SELECT id FROM users WHERE mobile=?', [$mob])) : 0;
+        $takeNumber = $mob && !$holder;                  // first (oldest) on a free number holds it
+        $age = $p['birth_year'] ? $year - (int)$p['birth_year'] : null;
+        q('INSERT INTO users (username, password_hash, display_name, placeholder, mobile, player_id, gender, dob, dob_exact, country, state, city, address) VALUES (?,?,?,1,?,?,?,?,0,?,?,?,?)', [
+            username_for($p['name'], $mob, $p['flat']), '', $p['name'], $takeNumber ? $mob : null, $p['id'], $p['gender'],
+            $age !== null ? (new DateTime('today'))->modify("-$age years")->format('Y-m-d') : null, $p['home_country'], $p['home_state'], $p['home_city'], $p['flat']]);
+        $uid = lastId(); $made[] = $uid;
+        if ($takeNumber) $head[$mob] = $uid;
+        elseif ($holder && !val('SELECT 1 FROM family_profiles WHERE player_id=?', [$p['id']])) {   // a family member on someone else's number
+            q('INSERT INTO family_profiles (player_id, user_id) VALUES (?,?)', [$p['id'], $holder]); $fam[] = ['user_id' => $holder, 'player_id' => (int)$p['id']];
+        }
+    }
+    q('INSERT INTO import_batches (label, created_by, info) VALUES (?,?,?)', ['Accounts for: ' . $b['label'], $u['id'], json_encode(['players' => [], 'users' => $made, 'family' => $fam, 'for_batch' => $batchId])]);
+    db()->commit();
+    return ['accounts' => count($made), 'family' => count($fam), 'holders' => count($head)];
 }

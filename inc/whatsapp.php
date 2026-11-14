@@ -120,6 +120,7 @@ function otp_consume(?string $token, ?int $id = null, ?string $code = null): arr
         $u = row('SELECT * FROM users WHERE mobile=?', [$mobile]);
         if (!$u) fail('No account uses that number any more');
         if (!$u['mobile_verified_at']) q('UPDATE users SET mobile_verified_at=NOW() WHERE id=?', [$u['id']]);
+        if (!empty($u['placeholder'])) q('UPDATE users SET placeholder=0, terms_accepted_at=COALESCE(terms_accepted_at, NOW()) WHERE id=?', [$u['id']]);   // v1.35: account made by the club, now claimed
     } else {   // signup
         $u = row('SELECT * FROM users WHERE mobile=?', [$mobile]);
         if (!$u) {

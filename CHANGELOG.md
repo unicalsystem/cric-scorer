@@ -4,6 +4,12 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.35.0 - 14 November 2026
+- **Player accounts for imported players**: Admin → Imports → 👤 Create player accounts gives every imported player without a login a registered account (shown under players in the app), username = name + last 4 digits of the number (e.g. arjunj9750), with their age, gender, flat and city filled in
+- Players **claim** their account by signing in with WhatsApp (their number gets a code); the oldest person on a shared number holds it and the others on that number are their family profiles. A child's account can be given a username + password by the parent (Family profiles → 🔑 Create login)
+- Players can now **change their username** in My Profile
+- The accounts can be removed with one tap (Admin → Imports) while nobody has claimed theirs
+
 ## 1.34.0 - 14 November 2026
 - **Family profiles**: one login (a verified WhatsApp number) can hold several players - the parent and the children who share that number. Home shows "Playing as …" with **Switch ▾**; More → Family profiles lists them
 - **Logins for kids without a phone**: on Family profiles tap 🔑 Create login - they sign in with their own username and password and see their own profile; the parent still manages them

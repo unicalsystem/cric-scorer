@@ -1923,7 +1923,7 @@ function viewProfile() {
     </div>
     <div class="card">
     <div class="field"><label>Display name</label><input class="input" name="display_name" value="${esc(u.display_name)}" required></div>
-    <div class="field"><label>Username</label><input class="input" value="${esc(u.username)}" disabled></div>
+    <div class="field"><label>Username <span class="small muted">(you can change it)</span></label><input class="input" name="username" value="${esc(u.username)}" autocapitalize="none" autocomplete="username" pattern="[a-z0-9_.]{3,30}" title="3–30 lowercase letters, numbers, dot or underscore" required></div>
     <div class="field" style="margin-bottom:0"><label>About me <span class="muted" id="bioCount" style="float:right">${(u.bio || '').length}/160</span></label>
       <textarea class="input" name="bio" rows="3" maxlength="160" placeholder="e.g. Opening batter who loves pull shots 🏏 Big CSK fan!" oninput="document.getElementById('bioCount').textContent=this.value.length+'/160'">${esc(u.bio || '')}</textarea></div></div>
     <div class="section"><h2>👤 About me</h2><span class="small muted">🔒 only you see this</span></div>
