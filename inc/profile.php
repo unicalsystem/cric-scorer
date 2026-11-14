@@ -28,6 +28,45 @@ function age_from_dob(?string $dob): ?int {
 function schema_v132(): void {
     if (!val("SHOW COLUMNS FROM users LIKE 'dob'")) db()->exec("ALTER TABLE users ADD COLUMN dob DATE NULL AFTER experience_years, ADD COLUMN dob_exact TINYINT(1) NOT NULL DEFAULT 0 AFTER dob");
     if (!val("SHOW COLUMNS FROM users LIKE 'gender'")) db()->exec("ALTER TABLE users ADD COLUMN gender CHAR(1) NULL AFTER dob_exact, ADD COLUMN address VARCHAR(250) NULL AFTER gender");
+    if (!val("SHOW COLUMNS FROM users LIKE 'country'")) db()->exec("ALTER TABLE users ADD COLUMN country CHAR(2) NULL AFTER address, ADD COLUMN state VARCHAR(80) NULL AFTER country, ADD COLUMN city VARCHAR(80) NULL AFTER state");
+}
+
+/** v1.33: ISO-2 codes of every country in the bundled list */
+function geo_country_codes(): array {
+    static $codes = null;
+    if ($codes === null) { $l = json_decode((string)@file_get_contents(dirname(__DIR__) . '/assets/geo/countries.json'), true) ?: []; $codes = array_map(fn($c) => $c[0], $l); }
+    return $codes;
+}
+
+/**
+ * v1.33: "Use my location" - turn GPS coordinates into country / state / city / street with OpenStreetMap Nominatim
+ * (free, no key; usage policy: max 1 request a second, a real User-Agent). Results are cached per ~100 m in data/cache/geo.
+ */
+function geo_reverse(array $in): array {
+    $lat = (float)($in['lat'] ?? 0); $lon = (float)($in['lon'] ?? 0);
+    if (!$lat && !$lon || abs($lat) > 90 || abs($lon) > 180) fail('Location not available');
+    $dir = dirname(__DIR__) . '/data/cache/geo';
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    $key = $dir . '/' . sprintf('%.3f_%.3f', $lat, $lon) . '.json';
+    $j = is_file($key) ? json_decode((string)file_get_contents($key), true) : null;
+    if (!$j) {
+        $lock = fopen($dir . '/.lock', 'c');                    // one request at a time, at least 1.1 s apart
+        if ($lock) flock($lock, LOCK_EX);
+        $last = (float)@file_get_contents($dir . '/.last');
+        $wait = 1.1 - (microtime(true) - $last); if ($wait > 0) usleep((int)($wait * 1e6));
+        $url = 'https://nominatim.openstreetmap.org/reverse?' . http_build_query(['format' => 'jsonv2', 'lat' => sprintf('%.6f', $lat), 'lon' => sprintf('%.6f', $lon), 'addressdetails' => 1, 'zoom' => 18, 'accept-language' => 'en']);
+        $r = news_http($url);                                    // plain GET with our User-Agent (inc/news.php)
+        @file_put_contents($dir . '/.last', (string)microtime(true));
+        if ($lock) { flock($lock, LOCK_UN); fclose($lock); }
+        $j = ($r['code'] ?? 0) === 200 ? json_decode((string)$r['body'], true) : null;
+        if (!$j || empty($j['address'])) fail('Could not find an address for this spot - please pick it from the lists');
+        @file_put_contents($key, json_encode($j));
+    }
+    $a = $j['address'];
+    $city = $a['city'] ?? $a['town'] ?? $a['village'] ?? $a['municipality'] ?? $a['city_district'] ?? $a['county'] ?? $a['state_district'] ?? null;
+    $street = implode(', ', array_filter([$a['house_number'] ?? null, $a['building'] ?? null, $a['road'] ?? null, $a['neighbourhood'] ?? null, $a['suburb'] ?? $a['quarter'] ?? null, $a['postcode'] ?? null]));
+    return ['country' => isset($a['country_code']) ? strtoupper($a['country_code']) : null, 'country_name' => $a['country'] ?? null, 'state' => $a['state'] ?? $a['region'] ?? null,
+            'city' => $city, 'district' => $a['state_district'] ?? $a['county'] ?? null, 'street' => $street ?: null];
 }
 
 /** Save the editable profile fields sent from My Profile */
@@ -72,6 +111,15 @@ function profile_fields_save(array $u, array $in): void {
         if ($pid && in_array($g, ['M', 'F'], true)) q('UPDATE players SET gender=? WHERE id=? AND gender IS NULL', [$g, $pid]);   // club league "min women" checks
     }
     if (array_key_exists('address', $in)) { $a = trim(preg_replace('/[ \t]+/u', ' ', (string)$in['address'])); $set[] = 'address=?'; $vals[] = $a === '' ? null : mb_substr($a, 0, 250); }
+    // v1.33: country (ISO code from assets/geo/countries.json), state and city - private like the address
+    if (array_key_exists('country', $in)) {
+        $cc = strtoupper(trim((string)$in['country']));
+        $ok = $cc !== '' && in_array($cc, geo_country_codes(), true);
+        $clean = fn($k) => ($v = trim(preg_replace('/\s+/u', ' ', (string)($in[$k] ?? '')))) === '' ? null : mb_substr($v, 0, 80);
+        $set[] = 'country=?'; $vals[] = $ok ? $cc : null;
+        $set[] = 'state=?'; $vals[] = $ok ? $clean('state') : null;
+        $set[] = 'city=?'; $vals[] = $ok ? $clean('city') : null;
+    }
     if (array_key_exists('avatar_preset', $in)) { $set[] = 'avatar_preset=?'; $vals[] = in_array($in['avatar_preset'], AVATAR_PRESETS, true) ? $in['avatar_preset'] : null; }
     if (array_key_exists('player_id', $in)) {
         $pid = nint($in['player_id']);

@@ -166,6 +166,9 @@ function handle(string $action, array $in, ?array $u) {
     }
 
     /* ===== Home ===== */
+    case 'geo_reverse':                                // v1.33: "Use my location" on My Profile
+        return geo_reverse($in);
+
     case 'cricket_news':                               // v1.28: real-world headlines (cached RSS)
         return cricket_news(max(1, min(25, int_in($in, 'limit', 20))));
 

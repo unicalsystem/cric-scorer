@@ -4,6 +4,11 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.33.0 - 14 November 2026
+- My Profile → About me: **Country → State → City** pickers - every country (India first), its states load automatically, then that state's cities ("Other - type it" for anything not listed); then the address box for flat / street
+- **📍 Use my location**: with your permission the phone's GPS fills in country, state, city and street (OpenStreetMap, no key, cached on the server); you can still change anything
+- Lists come from the open countries-states-cities database (ODbL), 250 countries / 160k cities, split per country (India ≈ 50 KB) and cached on the phone. Like the address, all of it is private to you
+
 ## 1.32.0 - 14 November 2026
 - My Profile → **About me** (private - only you see it): **Gender**, **Age** and **Address**
 - Age: type your age, or pick your date of birth. Either way it goes up by 1 automatically every year (an age you type counts from the day you entered it). Shown as "Age" on your own cricket card only

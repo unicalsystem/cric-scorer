@@ -1894,7 +1894,14 @@ function viewProfile() {
         <div id="ageAge" style="${u.dob && u.dob_exact ? 'display:none' : ''}"><input class="input" name="age" type="number" inputmode="numeric" min="3" max="100" placeholder="e.g. 11" value="${u.age ?? ''}" style="max-width:140px"></div>
         <div id="ageDob" style="${u.dob && u.dob_exact ? '' : 'display:none'}"><input class="input" name="dob" type="date" max="${new Date().toISOString().slice(0, 10)}" value="${u.dob && u.dob_exact ? esc(u.dob) : ''}" style="max-width:200px"></div>
         <div class="small muted" style="margin-top:6px">${u.age != null ? `You are <b>${u.age}</b>. ` : ''}Your age goes up by 1 automatically every year${u.dob && !u.dob_exact ? ' (from the day you entered it)' : ''}.</div></div>
-      <div class="field" style="margin-bottom:0"><label>Address</label><textarea class="input" name="address" rows="2" maxlength="250" placeholder="e.g. Flat 1204, Tower G, Raheja Vistas, Nacharam">${esc(u.address || '')}</textarea></div>
+      <div class="row" style="justify-content:space-between;margin-bottom:6px"><label class="small" style="font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Where I live</label>
+        <button type="button" class="btn sm light" onclick="App.geoLocate(this)">📍 Use my location</button></div>
+      <div class="field"><label>Country</label><select class="input" name="country" id="geoCountry" onchange="App.geoCountry(this.value)"><option value="">Loading…</option></select></div>
+      <div class="grid2"><div class="field"><label>State</label><select class="input" name="state" id="geoState" onchange="App.geoState(this.value)"><option value="">-</option></select></div>
+        <div class="field"><label>City</label><select class="input" id="geoCity" onchange="App.geoCity(this.value)"><option value="">-</option></select>
+          <input class="input" id="geoCityOther" placeholder="Type your city / town" maxlength="80" style="display:none;margin-top:6px"><input type="hidden" name="city" id="geoCityVal"></div></div>
+      <div class="field" style="margin-bottom:0"><label>Address</label><textarea class="input" name="address" id="geoAddr" rows="2" maxlength="250" placeholder="e.g. Flat 1204, Tower G, Raheja Vistas, Nacharam">${esc(u.address || '')}</textarea>
+        <div class="small muted" style="margin-top:4px">Countries, states & cities: <a class="link" href="https://github.com/dr5hn/countries-states-cities-database" target="_blank" rel="noopener">countries-states-cities-database</a> (ODbL) · location lookup © OpenStreetMap contributors</div></div>
     </div>
     <div class="section"><h2>🏏 My cricket profile</h2></div>
     <div class="card">
@@ -1928,6 +1935,7 @@ function viewProfile() {
     ${u.is_admin ? `<div class="small muted" style="margin:0 2px">You're the administrator who looks after this website, so this account can't be deleted from the app.</div>`
       : `<button type="button" class="btn light block" style="color:var(--red)" onclick="App.deleteAccount()">🗑️ Delete my account</button>`}
     </form>`, 'more');
+  App.geoInit(u);
   if (gOn && !u.google) { S.gMode = 'link'; renderGoogleButton('glink', 'continue_with'); }
 }
 App.deleteAccount = () => {
@@ -2161,6 +2169,62 @@ App.findMeSearch = q => {
   }, 250);
 };
 App.linkPlayer = id => run(async () => { await quickSave({ player_id: id }); closeSheet(); toast(id ? "Linked! Your stats will show on your profile 📊" : 'Unlinked'); refreshProfileKeepForm(); });
+/* v1.33: country → state → city pickers (static lists in assets/geo, loaded per country) + "Use my location" */
+const GEO = { countries: null, states: {} };
+async function geoJSON(path) { const r = await fetch(path, { cache: 'force-cache' }); if (!r.ok) throw new Error('Could not load ' + path); return r.json(); }
+App.geoInit = async (u) => {
+  const sel = $('#geoCountry'); if (!sel) return;
+  try { GEO.countries = GEO.countries || await geoJSON('assets/geo/countries.json?v=' + window.CS_VERSION); } catch (e) { sel.innerHTML = '<option value="">Could not load countries</option>'; return; }
+  sel.innerHTML = '<option value="">- Select country -</option>' + GEO.countries.map(([c, n, f]) => `<option value="${c}" ${c === u.country ? 'selected' : ''}>${f} ${esc(n)}</option>`).join('');
+  if (u.country) await App.geoCountry(u.country, u.state, u.city);
+  else App.geoCity('');
+};
+App.geoCountry = async (cc, state, city) => {
+  const st = $('#geoState'); if (!st) return;
+  st.innerHTML = '<option value="">' + (cc ? 'Loading…' : '-') + '</option>'; $('#geoCity').innerHTML = '<option value="">-</option>';
+  if (!cc) return App.geoCity('');
+  try { GEO.states[cc] = GEO.states[cc] || await geoJSON(`assets/geo/c/${cc}.json?v=${window.CS_VERSION}`); } catch (e) { GEO.states[cc] = []; }
+  const list = GEO.states[cc];
+  const known = !state || list.some(s => s[0] === state);
+  st.innerHTML = '<option value="">- Select state -</option>' + list.map(s => `<option ${s[0] === state ? 'selected' : ''}>${esc(s[0])}</option>`).join('') + (!known ? `<option selected>${esc(state)}</option>` : '');
+  App.geoState(state || '', city);
+};
+App.geoState = (state, city) => {
+  const cc = $('#geoCountry').value, cs = $('#geoCity'), s = (GEO.states[cc] || []).find(x => x[0] === state);
+  const cities = s ? s[1] : [];
+  const known = !city || cities.includes(city);
+  cs.innerHTML = '<option value="">- Select city -</option>' + cities.map(c => `<option ${c === city ? 'selected' : ''}>${esc(c)}</option>`).join('') + `<option value="__other" ${city && !known ? 'selected' : ''}>Other - type it</option>`;
+  App.geoCity(city && !known ? '__other' : (city || ''), city);
+};
+App.geoCity = (v, typed) => {
+  const other = $('#geoCityOther'), hid = $('#geoCityVal'); if (!other) return;
+  other.style.display = v === '__other' ? '' : 'none';
+  if (v === '__other') { if (typed !== undefined) other.value = typed || ''; other.oninput = () => hid.value = other.value; hid.value = other.value; }
+  else hid.value = v || '';
+};
+// best match of a name in a list (case / spelling tolerant)
+const geoMatch = (name, list) => { if (!name) return null; const n = s => String(s).toLowerCase().normalize('NFD').replace(/[^a-z]/g, ''); const t = n(name);
+  return list.find(x => n(x) === t) || list.find(x => n(x).startsWith(t) || t.startsWith(n(x))) || list.find(x => n(x).includes(t) || t.includes(n(x))) || null; };
+App.geoLocate = btn => {
+  if (!navigator.geolocation) return toast('This phone/browser cannot share its location', true);
+  btn.disabled = true; const label = btn.textContent; btn.textContent = '📍 Finding you…';
+  const done = () => { btn.disabled = false; btn.textContent = label; };
+  navigator.geolocation.getCurrentPosition(async pos => {
+    try {
+      const r = await api('geo_reverse', { lat: pos.coords.latitude, lon: pos.coords.longitude });
+      if (!r.country || !GEO.countries.some(c => c[0] === r.country)) throw new Error('Could not work out the country - please pick it from the list');
+      $('#geoCountry').value = r.country;
+      try { GEO.states[r.country] = GEO.states[r.country] || await geoJSON(`assets/geo/c/${r.country}.json?v=${window.CS_VERSION}`); } catch (e) { GEO.states[r.country] = []; }
+      const states = GEO.states[r.country], st = geoMatch(r.state, states.map(s => s[0])) || r.state || '';
+      const cities = (states.find(s => s[0] === st) || [null, []])[1];
+      const city = geoMatch(r.city, cities) || geoMatch(r.district, cities) || r.city || '';
+      await App.geoCountry(r.country, st, city);
+      const addr = $('#geoAddr'); if (addr && !addr.value.trim() && r.street) addr.value = r.street;
+      toast(`📍 ${[city, st].filter(Boolean).join(', ')} ✓ - add your flat / house number`);
+    } catch (e) { toast(e.message || 'Could not find your address', true); }
+    done();
+  }, err => { done(); toast(err.code === 1 ? 'Location permission was denied - pick from the lists instead' : 'Could not get your location - pick from the lists', true); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+};
 App.ageMode = (mode, btn) => {
   $('#ageMode').value = mode;
   btn.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));

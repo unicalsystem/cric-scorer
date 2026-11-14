@@ -180,7 +180,7 @@ function public_user(array $u): array {
             'mobile' => !empty($u['mobile']) ? pretty_mobile($u['mobile']) : null, 'mobile_verified' => !empty($u['mobile_verified_at']), 'academies' => user_academies((int)$u['id']),
             // v1.32: age is private - only in the player's own account data, never on public profiles
             'dob' => $u['dob'] ?? null, 'dob_exact' => !empty($u['dob_exact']), 'age' => age_from_dob($u['dob'] ?? null),
-            'gender' => $u['gender'] ?? null, 'address' => $u['address'] ?? null] + cricket_profile($u);
+            'gender' => $u['gender'] ?? null, 'address' => $u['address'] ?? null, 'country' => $u['country'] ?? null, 'state' => $u['state'] ?? null, 'city' => $u['city'] ?? null] + cricket_profile($u);
 }
 
 function current_user(): ?array {
