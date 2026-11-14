@@ -452,6 +452,8 @@ textarea.input{resize:vertical;min-height:72px;line-height:1.4}
 /* Visible by default (so search engines and visitors without JavaScript see it); hidden once the app takes over */
 body.app-mode #landing{display:none}
 body:not(.app-mode) #tabbar{display:none!important}
+/* The empty app box must not add a screen of blank space under the landing page footer */
+body:not(.app-mode) #app{min-height:0;padding:0;box-shadow:none}
 .lp-wrap{max-width:900px;margin:0 auto;padding:0 18px}
 .lp-hero{background:radial-gradient(120% 100% at 100% 0%,var(--pitch-3) 0%,var(--pitch) 45%,var(--pitch-2) 100%);color:#fff;padding:calc(var(--safe-t) + 28px) 0 40px;border-radius:0 0 28px 28px}
 .lp-brand{display:flex;align-items:center;gap:12px}

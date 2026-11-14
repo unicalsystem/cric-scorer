@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.38.1 - 14 November 2026
+- Fix: on phones the home page showed a long blank area after the footer when scrolling down
+
 ## 1.38.0 - 14 November 2026
 - **Players page shows everyone**: Players → Find now lists every registered player (it stopped at 40), 50 at a time with **Load more** and the total count, most-followed first
 - Team chips at the top (All · Phoenix-Juniors 19 · Rangers-Seniors 27 …) filter players by the team they play for; each row shows their team, and "⏳ invited" for accounts made by the club that haven't signed in yet
