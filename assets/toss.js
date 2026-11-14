@@ -11,15 +11,15 @@ function qtRandom() {                      // a fair 50/50 using the browser's c
 function viewToss() {
   if (!S.qt) { const s = qtLoad(); S.qt = { a: s.a || '', b: s.b || '', hist: s.hist || [], caller: 'a', call: 'heads', step: 'set', coin: null, winner: null, decision: null, spinning: false }; }
   const q = S.qt;
-  const nameIn = (k, label) => `<div class="field grow"><label>${label}</label><input class="input" value="${esc(q[k])}" placeholder="${k === 'a' ? 'Team A' : 'Team B'}" maxlength="30" oninput="S.qt.${k}=this.value;qtSave();qtDraw(true)"></div>`;
+  const nameIn = (k, label) => `<div class="field grow"><label>${label}</label><input class="input" value="${esc(q[k])}" placeholder="${k === 'a' ? 'Team A' : 'Team B'}" maxlength="30" oninput="S.qt.${k}=this.value;qtSave();qtNames()"></div>`;
   const pick = (cls, k, v, html) => `<button class="${q[k] === v ? 'on' : ''}" onclick="S.qt.${k}='${v}';qtDraw(true)">${html}</button>`;
   const other = q.caller === 'a' ? 'b' : 'a';
   const coinFace = q.spinning ? '…' : q.coin ? q.coin.toUpperCase() : 'TOSS';
   let body = '';
   if (q.step === 'set') body = `<div class="card">
       <div class="row" style="gap:10px;align-items:flex-end">${nameIn('a', 'Team A')}<div style="font-weight:800;padding-bottom:22px;color:var(--muted)">vs</div>${nameIn('b', 'Team B')}</div>
-      <div class="field"><label>Who calls?</label><div class="toss-pick">${pick('', 'caller', 'a', `<span style="font-size:26px">🗣️</span>${esc(qtName('a'))}`)}${pick('', 'caller', 'b', `<span style="font-size:26px">🗣️</span>${esc(qtName('b'))}`)}</div></div>
-      <div class="field"><label>${esc(qtName(q.caller))} calls</label><div class="toss-pick">${pick('', 'call', 'heads', '<span style="font-size:26px">🪙</span>Heads')}${pick('', 'call', 'tails', '<span style="font-size:26px">🔄</span>Tails')}</div></div>
+      <div class="field"><label>Who calls?</label><div class="toss-pick">${pick('', 'caller', 'a', `<span style="font-size:26px">🗣️</span><i data-qtn="a" style="font-style:normal">${esc(qtName('a'))}</i>`)}${pick('', 'caller', 'b', `<span style="font-size:26px">🗣️</span><i data-qtn="b" style="font-style:normal">${esc(qtName('b'))}</i>`)}</div></div>
+      <div class="field"><label><span data-qtc>${esc(qtName(q.caller))}</span> calls</label><div class="toss-pick">${pick('', 'call', 'heads', '<span style="font-size:26px">🪙</span>Heads')}${pick('', 'call', 'tails', '<span style="font-size:26px">🔄</span>Tails')}</div></div>
       <button class="btn block lime" style="margin-top:4px" onclick="App.qtFlip()">🪙 Flip the coin</button></div>`;
   else if (q.step === 'flip') body = `<div class="card" style="text-align:center"><div class="sub">${esc(qtName(q.caller))} called <b>${q.call}</b>…</div>
       <div class="qt-coin-wrap"><div class="coin qt-coin ${q.spinning ? 'spin' : ''}" id="qtcoin" onclick="if(!S.qt.spinning)App.qtFlip()">${coinFace}</div></div>
@@ -38,6 +38,11 @@ function viewToss() {
     <div class="card flush list">${q.hist.map(h => `<div class="item" style="cursor:default"><span class="tile ic" style="box-shadow:none;padding:0;width:38px;height:38px;justify-content:center">🪙</span><div class="grow"><div class="t">${esc(h.w)} won · ${h.d} first</div><div class="s">${esc(h.a)} vs ${esc(h.b)} · ${h.coin} · ${fmtDate(h.at)}</div></div></div>`).join('')}</div>` : '';
   mount(topbar('Quick Toss', { back: true, refresh: false, sub: 'no match needed' }) + `<div class="content">${body}${hist}
     <p class="small muted" style="text-align:center;margin-top:16px">A fair 50/50 flip. Works offline · Cric-Scorer by Aaryush 🏏</p></div>`, S.user ? 'more' : null);
+}
+// Typing a team name only updates the labels - re-drawing the page would close the phone keyboard after every letter
+function qtNames() {
+  document.querySelectorAll('[data-qtn]').forEach(el => { el.textContent = qtName(el.dataset.qtn); });
+  document.querySelectorAll('[data-qtc]').forEach(el => { el.textContent = qtName(S.qt.caller); });
 }
 function qtDraw(keep) { if ((location.hash || '') === '#/toss') { const y = window.scrollY; viewToss(); if (keep) window.scrollTo(0, y); } }
 App.qtFlip = () => {

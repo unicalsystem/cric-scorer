@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.38.2 - 14 November 2026
+- Fix: Quick Toss team name boxes closed the phone keyboard after every letter, so a full name could not be typed
+
 ## 1.38.1 - 14 November 2026
 - Fix: on phones the home page showed a long blank area after the footer when scrolling down
 
