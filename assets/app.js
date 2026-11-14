@@ -147,6 +147,7 @@ const ROUTES = [
   [/^#\/tournament\/(\d+)$/, viewTournament],
   [/^#\/stats$/, viewStats],
   [/^#\/news$/, viewNews],
+  [/^#\/family$/, viewFamily],
   [/^#\/types$/, viewTypes],
   [/^#\/profile$/, viewProfile],
   [/^#\/more$/, viewMore],
@@ -433,12 +434,13 @@ function matchCard(m) {
 
 /* ---------- Home ---------- */
 async function viewHome() {
-  const name = S.user.display_name.split(' ')[0];
+  const prof = activeProfile(), name = (prof && !prof.self ? prof.name : S.user.display_name).split(' ')[0];
   const hour = new Date().getHours();
   const hi = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const hero = `<div class="hero"><div class="brand">${LOGO}<div class="grow"><b>Cric-Scorer</b><span>by Aaryush</span></div><button class="icon-btn refresh-btn" aria-label="Refresh" onclick="App.refresh()">${I.refresh}</button></div>
     <h2>${hi}, ${esc(name)}! 👋</h2><p>Ready to score today's big match?</p>
-    <div class="cta"><button class="btn lime" onclick="go('#/match/new')">${I.plus} New Match</button><button class="btn ghost" onclick="go('#/tournaments')">${I.trophy} Tournaments</button></div></div>`;
+    <div class="cta"><button class="btn lime" onclick="go('#/match/new')">${I.plus} New Match</button><button class="btn ghost" onclick="go('#/tournaments')">${I.trophy} Tournaments</button></div>
+    ${profileChip()}</div>`;
   mount(hero + `<div class="content">${sk(3)}</div>`, 'home');
   const d = await api('home');
   if (d.announcements) { S.extras = S.extras || {}; S.extras.announcements = d.announcements; }
@@ -465,6 +467,44 @@ async function viewHome() {
     </div></div>`, 'home');
   App.loadNews(4);
 }
+/* v1.34: family profiles - one login (a phone number) can hold several players; the chosen one is remembered on this phone */
+function activeProfile() {
+  const list = (S.user && S.user.profiles) || []; if (!list.length) return null;
+  let id = null; try { id = +localStorage.getItem('cs_prof_' + S.user.id); } catch (e) { /* private mode */ }
+  return list.find(p => p.id === id) || list.find(p => p.self) || list[0];
+}
+function profileChip() {
+  const list = (S.user && S.user.profiles) || []; const p = activeProfile(); if (!p) return '';
+  return `<div class="prof-chip" onclick="${list.length > 1 ? 'App.switchProfile()' : `go('#/player/${p.id}')`}"><span class="badge sm" style="background:${esc(p.color)};color:#fff">${esc(String(p.short_name).slice(0, 4))}</span>
+    <span class="grow ellipsis"><b>${esc(p.name)}</b> · ${esc(p.team)}</span><span class="small" style="font-weight:800">${list.length > 1 ? 'Switch ▾' : 'My stats ›'}</span></div>`;
+}
+App.switchProfile = () => {
+  const list = S.user.profiles || [], cur = activeProfile();
+  sheet(`<h3>👤 Switch profile</h3><div class="sub">Everyone in your family who plays with your number. Pick who is using the app now.</div>
+    <div class="plist">${list.map(p => `<button class="pbtn ${cur && cur.id === p.id ? 'on' : ''}" onclick="App.useProfile(${p.id})"><span class="chk">${cur && cur.id === p.id ? '✓' : ''}</span>${esc(p.name)} ${p.self ? '<span class="role-tag">you</span>' : ''}<span class="s">${esc(p.team)}${p.age ? ' · ' + p.age + ' yrs' : ''}${p.login ? ' · @' + esc(p.login) : ''}</span></button>`).join('')}</div>
+    <div class="grid2" style="margin-top:8px"><button class="btn light" onclick="closeSheet();go('#/player/${cur ? cur.id : ''}')">📊 ${esc(cur ? cur.name.split(' ')[0] : '')}'s stats</button><button class="btn light" onclick="closeSheet();go('#/family')">👨‍👩‍👧 Manage</button></div>`);
+};
+App.useProfile = id => { try { localStorage.setItem('cs_prof_' + S.user.id, id); } catch (e) { /* private mode */ } const p = (S.user.profiles || []).find(x => x.id === id); closeSheet(); toast(`Now using: ${p ? p.name : ''} ✓`); render(); };
+function viewFamily() {
+  const list = S.user.profiles || [], cur = activeProfile();
+  mount(topbar('Family profiles', { back: true }) + `<div class="content">
+    <div class="small muted" style="margin:0 2px 10px">Players who share your WhatsApp number are grouped here. Switch between them on Home. A child without a phone can get their own username and password - you still manage them here.</div>
+    ${list.length ? `<div class="card flush list">${list.map(p => `<div class="item"><span class="badge sm" style="background:${esc(p.color)};color:#fff">${esc(String(p.short_name).slice(0, 4))}</span>
+      <div class="grow" onclick="go('#/player/${p.id}')"><div class="t">${esc(p.name)} ${p.self ? '<span class="role-tag">you</span>' : ''}${cur && cur.id === p.id ? ' <span class="role-tag">using now</span>' : ''}</div>
+        <div class="s">${esc(p.team)}${p.age ? ' · ' + p.age + ' yrs' : ''}${p.login ? ' · logs in as @' + esc(p.login) : ''}</div></div>
+      ${p.self ? '' : p.login ? '<span class="small muted">🔑 has login</span>' : `<button class="btn sm light" onclick="App.kidLogin(${p.id})">🔑 Create login</button>`}</div>`).join('')}</div>`
+      : '<div class="card empty"><div class="big">👨‍👩‍👧</div>No profiles yet. Verify your WhatsApp number in My Profile - players with your number then show up here.</div>'}
+    ${list.length > 1 ? '<button class="btn block" style="margin-top:12px" onclick="App.switchProfile()">👤 Switch profile</button>' : ''}</div>`, 'more');
+}
+App.kidLogin = pid => {
+  const p = (S.user.profiles || []).find(x => x.id === pid) || {};
+  const sug = String(p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
+  sheet(`<h3>🔑 Login for ${esc(p.name || '')}</h3><div class="sub">For a family member without a phone. They sign in with this username and password and see their own profile; you keep managing them from your account.</div>
+    <form onsubmit="App.kidLoginSave(event,${pid})"><div class="field"><label>Username</label><input class="input" name="username" value="${esc(sug)}" autocapitalize="none" autocomplete="off" required></div>
+    <div class="field"><label>Password (6+ characters)</label><input class="input" name="password" type="text" autocomplete="new-password" minlength="6" required></div>
+    <button class="btn block">Create login</button></form>`);
+};
+App.kidLoginSave = (e, pid) => { e.preventDefault(); run(async () => { const f = formData(e.target); const r = await api('family_create_login', { player_id: pid, ...f }); S.user.profiles = r.profiles; closeSheet(); toast(`Login @${r.username} created ✓ - note the password`); render(); }, e.submitter); };
 /* v1.28: tournaments that haven't finished - swipeable cards on Home */
 function homeTours(list) {
   if (!list.length) return '';
@@ -1792,6 +1832,7 @@ function viewMore() {
       ${u.is_admin ? item('🛠️', 'Admin portal', 'Stats, roll-out, updates, help desk', "go('#/admin')") : ''}
       ${u.features && u.features.auction ? item('🔨', 'APL Auction', 'Aaryush Premier League - bid for IPL stars with friends', "go('#/apl')") : ''}
       ${u.features && u.features.game ? item('🎮', 'Gully Duel', 'Bat vs bowl - two phones, one phone or the computer', "go('#/play')") : ''}
+      ${(u.profiles || []).length > 1 ? item('👨‍👩‍👧', 'Family profiles', 'Switch profile · logins for kids without a phone', "go('#/family')") : ''}
       ${item('👥', 'Find players', 'Search, follow, and see your followers', "go('#/people')")}
       ${item('📊', 'Leaderboard', 'Top run scorers & wicket takers', "go('#/stats')")}
       ${item('⚙️', 'Match types', 'T20, ODI, Gully cricket & your own', "go('#/types')")}

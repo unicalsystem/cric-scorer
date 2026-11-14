@@ -15,6 +15,7 @@ require_once __DIR__ . '/league.php';
 require_once __DIR__ . '/playoffs.php';
 require_once __DIR__ . '/news.php';
 require_once __DIR__ . '/awards.php';
+require_once __DIR__ . '/family.php';
 require_once __DIR__ . '/academies.php';
 require_once __DIR__ . '/community.php';
 require_once __DIR__ . '/auction.php';
@@ -123,6 +124,7 @@ function ensure_schema(): void {
     schema_v123();   // v1.23: bouncer limit
     schema_v127();   // v1.27: playoffs & bowling quotas
     schema_v132();   // v1.32: age / date of birth
+    schema_v134();   // v1.34: family profiles, imports
     if (val("SHOW COLUMNS FROM innings LIKE 'max_overs'")) return;   // already on the DLS schema
     db()->exec("ALTER TABLE innings ADD COLUMN max_overs INT NOT NULL DEFAULT 20 AFTER target, ADD COLUMN start_overs INT NOT NULL DEFAULT 20 AFTER max_overs, ADD COLUMN dls TINYINT(1) NOT NULL DEFAULT 0 AFTER start_overs");
     db()->exec("UPDATE innings i JOIN matches m ON m.id=i.match_id SET i.max_overs=m.overs, i.start_overs=m.overs");
@@ -180,7 +182,8 @@ function public_user(array $u): array {
             'mobile' => !empty($u['mobile']) ? pretty_mobile($u['mobile']) : null, 'mobile_verified' => !empty($u['mobile_verified_at']), 'academies' => user_academies((int)$u['id']),
             // v1.32: age is private - only in the player's own account data, never on public profiles
             'dob' => $u['dob'] ?? null, 'dob_exact' => !empty($u['dob_exact']), 'age' => age_from_dob($u['dob'] ?? null),
-            'gender' => $u['gender'] ?? null, 'address' => $u['address'] ?? null, 'country' => $u['country'] ?? null, 'state' => $u['state'] ?? null, 'city' => $u['city'] ?? null] + cricket_profile($u);
+            'gender' => $u['gender'] ?? null, 'address' => $u['address'] ?? null, 'country' => $u['country'] ?? null, 'state' => $u['state'] ?? null, 'city' => $u['city'] ?? null,
+            'profiles' => user_profiles((int)$u['id'])] + cricket_profile($u);
 }
 
 function current_user(): ?array {

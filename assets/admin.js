@@ -2,7 +2,7 @@
 'use strict';
 const Admin = (() => {
   const A = {};
-  const TABS = [['stats', '📊 Stats'], ['users', '👥 Players'], ['features', '🚦 Roll-out'], ['update', '⬆️ Updates'], ['help', '💬 Help desk'], ['news', '📣 News'], ['errors', '🐞 Errors']];
+  const TABS = [['stats', '📊 Stats'], ['users', '👥 Players'], ['roster', '🧢 Team players'], ['imports', '📥 Imports'], ['features', '🚦 Roll-out'], ['update', '⬆️ Updates'], ['help', '💬 Help desk'], ['news', '📣 News'], ['errors', '🐞 Errors']];
   let userQ = '', userPage = 0;
   let tab = 'stats', helpStatus = 'open';
   const num = n => Number(n || 0).toLocaleString('en-IN');
@@ -16,7 +16,7 @@ const Admin = (() => {
     if (k) tab = k;
     if (!S.user || !S.user.is_admin) { mount(topbar('Admin', { back: true }) + '<div class="content"><div class="empty">Only the administrator can open this page.</div></div>', 'more'); return; }
     mount(frame(sk(4)), 'more');
-    const fn = { stats, users, features, update, help, news, errors }[tab];
+    const fn = { stats, users, roster, imports, features, update, help, news, errors }[tab];
     await fn();
   };
 
@@ -169,6 +169,50 @@ const Admin = (() => {
   }
   A.errSearch = e => { e.preventDefault(); errors(formData(e.target).ref.trim()); };
   A.errClear = () => confirmSheet('Clear all error reports?', 'This deletes the list. New errors will still be recorded.', 'Clear', () => run(async () => { closeSheet(); await api('admin_errors_clear'); errors(); }));
+
+  /* ---------- v1.34: Team players - correct anyone (name, team, age, gender, number, flat, who manages them) ---------- */
+  let rosterQ = '', rosterTeam = 0, rosterData = null;
+  async function roster(data) {
+    const d = data || await api('admin_player_search', { q: rosterQ, team_id: rosterTeam }); rosterData = d;
+    mount(frame(`<form class="row" onsubmit="Admin.rosterSearch(event)"><select class="input" name="team_id" style="max-width:46%" onchange="this.form.requestSubmit()"><option value="0">All custom teams</option>${d.teams.map(t => `<option value="${t.id}" ${+t.id === rosterTeam ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+        <input class="input grow" name="q" value="${esc(rosterQ)}" placeholder="Name, flat or number"><button class="btn sm">Search</button></form>
+      <div class="small muted" style="margin:10px 2px">${d.players.length}${d.players.length >= 300 ? '+' : ''} player${d.players.length === 1 ? '' : 's'} · tap one to correct it</div>
+      ${d.players.length ? `<div class="card flush list">${d.players.map(p => `<div class="item" onclick="Admin.playerEdit(${p.id})">${badge({ short_name: p.short_name, color: p.color }, 'sm')}
+          <div class="grow"><div class="t">${esc(p.name)} ${p.gender ? `<span class="role-tag">${p.gender}</span>` : ''}${p.age ? ` <span class="role-tag">${p.age}y</span>` : ''}</div>
+          <div class="s">${esc(p.team)}${p.flat ? ' · ' + esc(p.flat) : ''}${p.mobile_pretty ? ' · ' + esc(p.mobile_pretty) : ''}${p.login ? ' · 🔑 @' + esc(p.login) : ''}${p.managed_by ? ' · 👨‍👩‍👧 @' + esc(p.managed_by) : ''}${+p.matches ? ' · ' + p.matches + ' matches' : ''}</div></div><span class="chev">${I.chev}</span></div>`).join('')}</div>`
+        : '<div class="card empty">No players found.</div>'}`, 'Team players'), 'more');
+  }
+  A.rosterSearch = e => { e.preventDefault(); const f = formData(e.target); rosterQ = f.q.trim(); rosterTeam = +f.team_id || 0; roster(); };
+  A.playerEdit = id => {
+    const p = rosterData.players.find(x => +x.id === id); if (!p) return;
+    const inp = (n, l, v, extra = '') => `<div class="field"><label>${l}</label><input class="input" name="${n}" value="${esc(v ?? '')}" ${extra}></div>`;
+    sheet(`<h3>✏️ ${esc(p.name)}</h3><div class="sub">${+p.matches ? `Has played ${p.matches} matches - changes show everywhere.` : 'Not in any match yet.'}</div>
+      <form onsubmit="Admin.playerSave(event,${id})">${inp('name', 'Name', p.name, 'required')}
+      <div class="grid2"><div class="field"><label>Team</label><select class="input" name="team_id">${rosterData.teams.map(t => `<option value="${t.id}" ${+t.id === +p.team_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Role</label><select class="input" name="role">${['Batter', 'Bowler', 'All-rounder', 'Wicket-keeper'].map(r => `<option ${r === p.role ? 'selected' : ''}>${r}</option>`).join('')}</select></div></div>
+      <div class="grid2"><div class="field"><label>Gender</label><select class="input" name="gender"><option value="">-</option><option value="M" ${p.gender === 'M' ? 'selected' : ''}>Male</option><option value="F" ${p.gender === 'F' ? 'selected' : ''}>Female</option></select></div>
+        ${inp('age', 'Age (goes up yearly)', p.age, 'type="number" min="1" max="109"')}</div>
+      ${inp('mobile', 'WhatsApp number', p.mobile_pretty, 'inputmode="tel"')}
+      <div class="grid2">${inp('flat', 'Flat', p.flat)}${inp('home_city', 'City', p.home_city)}</div>
+      <div class="grid2">${inp('home_state', 'State', p.home_state)}${inp('home_country', 'Country code', p.home_country, 'maxlength="2" placeholder="IN"')}</div>
+      <div class="grid2">${inp('login', 'Own login (username)', p.login, 'autocapitalize="none" placeholder="none"')}${inp('managed_by', 'Managed by (username)', p.managed_by, 'autocapitalize="none" placeholder="none"')}</div>
+      <button class="btn block">Save</button>${+p.matches ? '' : `<button type="button" class="btn light block" style="margin-top:8px;color:var(--red)" onclick="Admin.playerDelete(${id})">🗑️ Delete player</button>`}</form>`);
+  };
+  A.playerSave = (e, id) => { e.preventDefault(); run(async () => { const f = formData(e.target); const d = await api('admin_player_save', { id, ...f, _q: rosterQ, _team: rosterTeam }); closeSheet(); toast('Saved ✓'); roster(d); }, e.submitter); };
+  A.playerDelete = id => confirmSheet('Delete this player?', 'They are removed from the team. Players who have played matches cannot be deleted.', 'Delete', () => run(async () => { await api('admin_player_delete', { id }); closeSheet(); toast('Deleted'); roster(); }));
+
+  /* ---------- v1.34: Imports - one-tap undo ---------- */
+  async function imports(data) {
+    const d = data || await api('admin_import_list');
+    mount(frame(`<p class="small muted">Every bulk import of players is kept here. <b>Undo</b> removes all the players it added and the logins / family links it made - possible until any of them has played a match.</p>
+      ${d.imports.length ? d.imports.map(b => `<div class="card"><div class="row"><div class="grow"><b>${esc(b.label)}</b><div class="small muted">#${b.id} · ${fmtDate(b.at)} · by ${esc(b.by || '?')}</div></div>
+          ${b.undone_at ? '<span class="role-tag">undone</span>' : ''}</div>
+          <div class="small" style="margin:6px 0">${b.players} players · ${b.linked} logins linked · ${b.family} family links${b.undone_at ? ' · undone ' + fmtDate(b.undone_at) : ''}${b.played ? ` · <b>${b.played} have played</b>` : ''}</div>
+          ${b.teams.length ? `<div class="small muted">${b.teams.map(t => `${esc(t.name)}: ${t.n}`).join(' · ')}</div>` : ''}
+          ${b.undone_at ? '' : `<button class="btn ${b.played ? 'light' : ''} block" style="margin-top:10px;${b.played ? '' : 'background:var(--red);color:#fff'}" ${b.played ? 'disabled' : ''} onclick="Admin.importUndo(${b.id},${b.players})">↩️ ${b.played ? 'Cannot undo - players have played' : 'Undo this import'}</button>`}</div>`).join('')
+        : '<div class="card empty"><div class="big">📥</div>No imports yet.</div>'}`, 'Imports'), 'more');
+  }
+  A.importUndo = (id, n) => confirmSheet('Undo this import?', `All ${n} players it added are removed, with the logins and family links it made. Teams, matches and other players stay as they are.`, 'Undo import', () => run(async () => { const d = await api('admin_import_undo', { id }); closeSheet(); toast(`${d.removed} players removed ✓`); imports(d); }));
 
   return A;
 })();

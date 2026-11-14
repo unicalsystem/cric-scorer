@@ -272,6 +272,12 @@ function admin_action(string $action, array $u, array $in) {
         q('DELETE FROM error_reports');
         return ['ok' => true];
 
+    case 'admin_import_players': return admin_import_players($u, $in);          // v1.34
+    case 'admin_import_list': return admin_import_list();
+    case 'admin_import_undo': return admin_import_undo((int)($in['id'] ?? 0));
+    case 'admin_player_search': return admin_player_search($in);
+    case 'admin_player_save': return admin_player_save($in);
+    case 'admin_player_delete': return admin_player_delete((int)($in['id'] ?? 0));
     case 'admin_update_check': return update_check();
     case 'admin_update_install': return update_install();
     case 'admin_update_rollback': return update_rollback((string)($in['file'] ?? ''));

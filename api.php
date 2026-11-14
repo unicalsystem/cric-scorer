@@ -166,6 +166,9 @@ function handle(string $action, array $in, ?array $u) {
     }
 
     /* ===== Home ===== */
+    case 'family_create_login':                        // v1.34: username + password for a family member without a phone
+        return family_create_login($u, $in);
+
     case 'geo_reverse':                                // v1.33: "Use my location" on My Profile
         return geo_reverse($in);
 
@@ -225,6 +228,7 @@ function handle(string $action, array $in, ?array $u) {
         $t['can_edit'] = can_edit_team($t, $u);
         $t += team_access_info($t, $u);
         $players = rows("SELECT * FROM players WHERE team_id=? ORDER BY FIELD(role,'Batter','Wicket-keeper','All-rounder','Bowler'), name", [$t['id']]);
+        $players = array_map(fn($p) => player_privacy($p, $u, (bool)$t['can_edit']), $players);   // v1.34: phone / flat / location only for the team owner, family, admin
         [$vs, $vp] = vis_sql($u);
         $recent = match_summaries(rows("SELECT * FROM matches WHERE (team1_id=? OR team2_id=?) AND status IN ('live','completed') AND $vs ORDER BY updated_at DESC LIMIT 5", array_merge([$t['id'], $t['id']], $vp)));
         $club = null;
@@ -420,6 +424,7 @@ function handle(string $action, array $in, ?array $u) {
         $p = row('SELECT p.*, t.name team_name, t.short_name, t.color, t.category FROM players p JOIN teams t ON t.id=p.team_id WHERE p.id=?', [int_in($in, 'id')]);
         if (!$p) fail('Player not found', 404);
         $p['can_edit'] = can_edit_team(['category' => $p['category'], 'owner_id' => val('SELECT owner_id FROM teams WHERE id=?', [$p['team_id']])], $u);
+        $p = player_privacy($p, $u, (bool)$p['can_edit']);
         $recent = rows("SELECT m.id match_id, m.title, i.innings_no, i.id innings_id,
                           (SELECT COALESCE(SUM(runs_bat),0) FROM balls WHERE innings_id=i.id AND batsman_id=?) runs,
                           (SELECT COUNT(*) FROM balls WHERE innings_id=i.id AND batsman_id=? AND (extra_type IS NULL OR extra_type<>'wd')) balls,

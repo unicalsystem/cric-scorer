@@ -4,6 +4,14 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.34.0 - 14 November 2026
+- **Family profiles**: one login (a verified WhatsApp number) can hold several players - the parent and the children who share that number. Home shows "Playing as …" with **Switch ▾**; More → Family profiles lists them
+- **Logins for kids without a phone**: on Family profiles tap 🔑 Create login - they sign in with their own username and password and see their own profile; the parent still manages them
+- Players with the same number are linked automatically when the number is verified: the oldest becomes the login's own player, the rest family profiles
+- **Admin → 🧢 Team players**: correct any player - name, team (move), role, gender, age, WhatsApp number, flat, city / state / country, their own login and who manages them; delete players who haven't played
+- **Admin → 📥 Imports**: bulk imports are recorded; **Undo this import** removes every player it added and the logins / family links it made (until any of them plays a match)
+- Players now have flat, city, state and country; phone numbers, flats and locations are only shown to the team owner, the family manager and the admin
+
 ## 1.33.1 - 14 November 2026
 - My Profile → About me: **Country → State → City** pickers - every country (India first), its states load automatically, then that state's cities ("Other - type it" for anything not listed); then the address box for flat / street
 - **📍 Use my location**: with your permission the phone's GPS fills in country, state, city and street (OpenStreetMap, no key, cached on the server); you can still change anything

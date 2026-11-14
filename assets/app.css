@@ -657,3 +657,6 @@ body:not(.app-mode) #tabbar{display:none!important}
 /* v1.31: match page - link to its tournament */
 .tour-link{display:flex;align-items:center;gap:10px;margin:10px 16px 0;padding:10px 14px;border-radius:14px;background:linear-gradient(135deg,#fff7df,#ffeec2);color:#5b3d00;text-decoration:none;font-size:14px;box-shadow:var(--shadow)}
 .tour-link:active{opacity:.85}
+/* v1.34: profile switcher chip on Home */
+.prof-chip{display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px 12px;border-radius:14px;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;font-size:14px}
+.prof-chip:active{opacity:.8}
