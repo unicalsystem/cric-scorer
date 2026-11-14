@@ -168,7 +168,7 @@ function handle(string $action, array $in, ?array $u) {
     case 'remove_follower': return remove_follower($u, $in);
     case 'match_visibility': {
         $m = load_match(int_in($in, 'id'));
-        if (!can_edit_owned($m, $u)) fail('Only the scorer of this match can change who sees it', 403);
+        if (!can_manage_match($m, $u)) fail('Only the match creator, the team owners or the admin can change who sees it', 403);
         $v = ($in['visibility'] ?? '') === 'private' ? 'private' : 'public';
         q('UPDATE matches SET visibility=? WHERE id=?', [$v, $m['id']]);
         return match_state((int)$m['id'], $u);
@@ -187,7 +187,8 @@ function handle(string $action, array $in, ?array $u) {
     case 'home': {
         [$vs, $vp] = vis_sql($u);
         $live = match_summaries(rows("SELECT * FROM matches WHERE status='live' AND $vs ORDER BY updated_at DESC LIMIT 10", $vp));
-        $mine = match_summaries(rows("SELECT * FROM matches WHERE (owner_id=? OR scorer_id=?) AND status='scheduled' ORDER BY COALESCE(match_date, created_at) ASC LIMIT 5", [$u['id'], $u['id']]));
+        [$mms, $mmp] = my_matches_sql($u);                // v1.40: includes my teams' (owner / captain) and my tournaments' matches
+        $mine = match_summaries(rows("SELECT * FROM matches WHERE $mms AND status='scheduled' ORDER BY COALESCE(match_date, created_at) ASC LIMIT 5", $mmp));
         $recent = match_summaries(rows("SELECT * FROM matches WHERE status IN ('completed','abandoned') AND $vs ORDER BY updated_at DESC LIMIT 6", $vp));
         $followFeed = match_summaries(rows("SELECT m.* FROM matches m JOIN follows f ON f.followee_id=m.owner_id AND f.follower_id=? JOIN users o ON o.id=m.owner_id
                                             WHERE m.visibility='public' AND o.is_private=0 AND m.status IN ('live','completed') ORDER BY m.updated_at DESC LIMIT 5", [$u['id']]));
@@ -492,7 +493,7 @@ function handle(string $action, array $in, ?array $u) {
         $where = []; $p = [];
         if (in_array($st, ['scheduled', 'live', 'completed'], true)) { $where[] = $st === 'completed' ? "status IN ('completed','abandoned')" : 'status=?'; if ($st !== 'completed') $p[] = $st; }
         $scope = $in['scope'] ?? (!empty($in['mine']) ? 'mine' : 'all');
-        if ($scope === 'mine') { $where[] = '(owner_id=? OR scorer_id=?)'; $p[] = $u['id']; $p[] = $u['id']; }
+        if ($scope === 'mine') { [$mms, $mmp] = my_matches_sql($u); $where[] = $mms; $p = array_merge($p, $mmp); }   // v1.40: my teams' & tournaments' matches too
         elseif ($scope === 'following') { $where[] = "owner_id IN (SELECT f.followee_id FROM follows f JOIN users o ON o.id=f.followee_id WHERE f.follower_id=? AND o.is_private=0)"; $p[] = $u['id']; }
         [$vs, $vp] = vis_sql($u); $where[] = $vs; $p = array_merge($p, $vp);
         $sql = 'SELECT * FROM matches' . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY ' . ($st === 'scheduled' ? 'COALESCE(match_date, created_at) ASC' : 'updated_at DESC') . ' LIMIT 100';
@@ -556,13 +557,14 @@ function handle(string $action, array $in, ?array $u) {
 
     case 'match_scorer': {                            // the creator names who scores (by username), or takes it back
         $m = load_match(int_in($in, 'id'));
-        if (!can_edit_owned($m, $u)) fail('Only the player who created this match can choose the scorer', 403);
+        if (!can_manage_match($m, $u)) fail('Only the match creator, the team owners or the admin can choose the scorer', 403);
         $un = strtolower(trim((string)($in['username'] ?? '')));
         if (!empty($in['user_id'])) { $un = (string)val('SELECT username FROM users WHERE id=?', [int_in($in, 'user_id')]); if ($un === '') fail('Player not found'); }   // v1.29: picked from the teams' owners / captains
         if ($un === '') { if ($m['scorer_id']) match_log($m, 'Scoring taken back by the creator', $u); q('UPDATE matches SET scorer_id=NULL WHERE id=?', [$m['id']]); return ['scorer' => null]; }
         $p = row('SELECT id, username, display_name FROM users WHERE username=?', [$un]);
         if (!$p) fail('No player with that exact username');
-        if ((int)$p['id'] === (int)$m['owner_id']) fail("That's you - you can always score your own match");
+        if ((int)$p['id'] === (int)$m['owner_id']) fail('The player who created this match can always score it');
+        if ((int)$p['id'] === (int)$u['id']) fail("That's you - you can already score this match");
         q('UPDATE matches SET scorer_id=? WHERE id=?', [$p['id'], $m['id']]);
         match_log($m, 'Scoring handed to ' . $p['display_name'], $u);
         return ['scorer' => ['id' => (int)$p['id'], 'username' => $p['username'], 'display_name' => $p['display_name']]];
@@ -570,7 +572,7 @@ function handle(string $action, array $in, ?array $u) {
 
     case 'match_delete': {
         $m = load_match(int_in($in, 'id'));
-        if (!can_edit_owned($m, $u)) fail('Not allowed', 403);
+        if (!can_manage_match($m, $u)) fail('Only the match creator, the team owners or the admin can delete this match', 403);
         match_photos_purge((int)$m['id']);
         q('DELETE FROM matches WHERE id=?', [$m['id']]);
         return ['ok' => true];
@@ -583,7 +585,13 @@ function handle(string $action, array $in, ?array $u) {
     case 'match_ball_detail': case 'match_ball_edit': case 'match_ball_delete': case 'match_super_over': case 'match_details': case 'match_field': case 'match_draw': {
         db()->beginTransaction();
         $m = load_match(int_in($in, 'id'), true);
-        if (!can_score_match($m, $u)) fail('Only the scorer of this match can do that', 403);
+        if (!can_score_match($m, $u)) fail(match_role($m, $u) === 'captain' ? 'Someone else is already scoring this match' : 'Only the scorer of this match can do that', 403);
+        if (empty($m['scorer_id']) && (int)$m['owner_id'] !== (int)$u['id'] && empty($u['is_admin'])) {   // v1.40: a captain / team owner who starts scoring becomes the scorer, so two phones don't score at once
+            q('UPDATE matches SET scorer_id=? WHERE id=?', [$u['id'], $m['id']]);
+            $m['scorer_id'] = $u['id'];
+            $why = ['captain' => 'captain', 'team_owner' => 'team owner', 'organiser' => 'organiser'][match_role($m, $u)] ?? '';
+            match_log($m, $u['display_name'] . ($why ? " ($why)" : '') . ' started scoring', $u);
+        }
         if (!in_array($action, ['match_undo', 'match_rain_undo', 'match_ball_edit', 'match_ball_delete', 'match_ball_detail', 'match_super_over', 'match_details', 'match_penalty', 'match_penalty_undo'], true) && in_array($m['status'], ['completed', 'abandoned'], true)) fail('This match is finished');
         switch ($action) {
             case 'match_xi': set_playing_xi($m, $in); break;

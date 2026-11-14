@@ -250,10 +250,13 @@ function can_edit_team(?array $team, array $u): bool {
     if ($u['is_admin']) return true;
     return $team['category'] === 'custom' && (int)$team['owner_id'] === (int)$u['id'];
 }
-/** Who may score a match: the player who created it, the admin, or the scorer they named */
+/** Who may score a match: the admin, its creator, the tournament / club owner, both team owners (v1.40),
+    the scorer they named, and either captain (v1.40) while nobody else has been made the scorer */
 function can_score_match(?array $m, ?array $u): bool {
     if (!$m || !$u) return false;
-    return can_edit_owned($m, $u) || (!empty($m['scorer_id']) && (int)$m['scorer_id'] === (int)$u['id']);
+    if (can_manage_match($m, $u)) return true;
+    if (!empty($m['scorer_id']) && (int)$m['scorer_id'] === (int)$u['id']) return true;
+    return captain_can_score($m, $u);
 }
 function can_edit_owned(?array $obj, ?array $u): bool {
     if (!$obj || !$u) return false;

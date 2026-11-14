@@ -8,7 +8,7 @@ function vis_sql(?array $u, string $a = 'matches'): array {
     return ["($a.visibility='public' OR $a.owner_id=?)", [(int)$u['id']]];
 }
 function can_view_match(array $m, ?array $u): bool {
-    return ($m['visibility'] ?? 'public') === 'public' || ($u && (!empty($u['is_admin']) || (int)$m['owner_id'] === (int)$u['id']));
+    return ($m['visibility'] ?? 'public') === 'public' || ($u && (!empty($u['is_admin']) || (int)$m['owner_id'] === (int)$u['id'] || match_role($m, $u) !== null));
 }
 /** Can the viewer see this person at all? (private players are invisible to others) */
 function can_view_user(array $target, ?array $u): bool {

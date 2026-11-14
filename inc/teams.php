@@ -176,3 +176,56 @@ function team_logo_set(array $u, array $in): array {
     team_logo_delete_file($old);
     return ['logo' => $file];
 }
+
+/* ---------- v1.40: captains can start & score their matches; owners manage them like the admin ---------- */
+
+/** This account's part in a match: admin, creator, organiser (tournament / club owner), team_owner, captain, scorer - or null */
+function match_role(?array $m, ?array $u): ?string {
+    if (!$m || !$u) return null;
+    static $cache = [];
+    $key = (int)$m['id'] . ':' . (int)$u['id'];
+    if (array_key_exists($key, $cache)) return $cache[$key];
+    $r = null;
+    if (!empty($u['is_admin'])) $r = 'admin';
+    elseif ((int)$m['owner_id'] === (int)$u['id']) $r = 'creator';
+    elseif (!empty($m['tournament_id']) && val('SELECT 1 FROM tournaments t LEFT JOIN academies a ON a.id=t.academy_id WHERE t.id=? AND (t.owner_id=? OR a.owner_id=?)', [$m['tournament_id'], $u['id'], $u['id']])) $r = 'organiser';
+    else {
+        foreach ([(int)$m['team1_id'], (int)$m['team2_id']] as $tid) foreach (team_managers($tid) as $x) {
+            if ($x['id'] !== (int)$u['id']) continue;
+            if ($x['role'] === 'owner') { $r = 'team_owner'; break 2; }
+            $r = 'captain';
+        }
+        if (!$r && !empty($m['scorer_id']) && (int)$m['scorer_id'] === (int)$u['id']) $r = 'scorer';
+    }
+    return $cache[$key] = $r;
+}
+/** Everything the admin can do with a match (score, hand scoring over, privacy, details, delete):
+    the admin, its creator, the tournament / club owner, and the owners of both teams */
+function can_manage_match(?array $m, ?array $u): bool {
+    return in_array(match_role($m, $u), ['admin', 'creator', 'organiser', 'team_owner'], true);
+}
+/** A captain may start & score their match unless somebody else has already been made its scorer */
+function captain_can_score(?array $m, ?array $u): bool {
+    return match_role($m, $u) === 'captain' && (empty($m['scorer_id']) || (int)$m['scorer_id'] === (int)$u['id']);
+}
+/** Teams this account runs (owner or linked captain) - for "my matches" lists */
+function my_team_ids(array $u): array {
+    $ids = array_map('intval', array_column(rows("SELECT id FROM teams WHERE category='custom' AND owner_id=?", [$u['id']]), 'id'));
+    $p = []; $w = [];
+    if (!empty($u['player_id'])) { $w[] = 'p.id=?'; $p[] = $u['player_id']; }
+    $acc = row('SELECT player_id, mobile, mobile_verified_at FROM users WHERE id=?', [$u['id']]);
+    if ($acc && $acc['player_id']) { $w[] = 'p.id=?'; $p[] = $acc['player_id']; }
+    if ($acc && $acc['mobile'] && $acc['mobile_verified_at']) { $w[] = 'p.mobile=?'; $p[] = $acc['mobile']; }
+    if ($w) foreach (rows('SELECT DISTINCT t.id FROM teams t JOIN players p ON p.team_id=t.id AND p.name=t.captain WHERE ' . implode(' OR ', $w), $p) as $r) {
+        foreach (team_managers((int)$r['id']) as $x) if ($x['id'] === (int)$u['id'] && $x['role'] === 'captain') { $ids[] = (int)$r['id']; break; }
+    }
+    return array_values(array_unique($ids));
+}
+/** SQL (alias-free, on matches) for "matches I can run": mine, ones I score, my teams', my tournaments' */
+function my_matches_sql(array $u): array {
+    $teams = my_team_ids($u);
+    $sql = '(owner_id=? OR scorer_id=? OR tournament_id IN (SELECT t.id FROM tournaments t LEFT JOIN academies a ON a.id=t.academy_id WHERE t.owner_id=? OR a.owner_id=?)';
+    $p = [$u['id'], $u['id'], $u['id'], $u['id']];
+    if ($teams) { $in = implode(',', $teams); $sql .= " OR team1_id IN ($in) OR team2_id IN ($in)"; }
+    return [$sql . ')', $p];
+}
