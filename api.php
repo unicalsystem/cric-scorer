@@ -246,6 +246,9 @@ function handle(string $action, array $in, ?array $u) {
         return ['team' => $t, 'players' => $players, 'recent' => $recent, 'club' => $club, 'my_clubs' => user_league_clubs($u)];
     }
 
+    case 'team_logo':                                  // v1.36: upload / remove a team logo (owner or admin)
+        return team_logo_set($u, $in);
+
     case 'team_captain': {                             // team owner (or admin) picks the captain from the squad; empty = no captain
         $t = row('SELECT * FROM teams WHERE id=?', [int_in($in, 'id')]);
         if (!can_edit_team($t, $u)) fail('Only the team owner can change the captain', 403);

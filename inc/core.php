@@ -126,6 +126,7 @@ function ensure_schema(): void {
     schema_v132();   // v1.32: age / date of birth
     schema_v134();   // v1.34: family profiles, imports
     schema_v135();   // v1.35: accounts made for imported players
+    schema_v136();   // v1.36: team logos
     if (val("SHOW COLUMNS FROM innings LIKE 'max_overs'")) return;   // already on the DLS schema
     db()->exec("ALTER TABLE innings ADD COLUMN max_overs INT NOT NULL DEFAULT 20 AFTER target, ADD COLUMN start_overs INT NOT NULL DEFAULT 20 AFTER max_overs, ADD COLUMN dls TINYINT(1) NOT NULL DEFAULT 0 AFTER start_overs");
     db()->exec("UPDATE innings i JOIN matches m ON m.id=i.match_id SET i.max_overs=m.overs, i.start_overs=m.overs");

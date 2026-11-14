@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.36.0 - 14 November 2026
+- **Team logos**: on a team page the owner (or admin) taps the badge 📷 → Upload logo. The logo replaces the coloured initials everywhere - team lists, match cards, scoreboards, points tables, tournaments. Re-drawn as a 256×256 PNG on the server (transparent backgrounds kept, nothing hidden in the file); change or remove any time
+
 ## 1.35.0 - 14 November 2026
 - **Player accounts for imported players**: Admin → Imports → 👤 Create player accounts gives every imported player without a login a registered account (shown under players in the app), username = name + last 4 digits of the number (e.g. arjunj9750), with their age, gender, flat and city filled in
 - Players **claim** their account by signing in with WhatsApp (their number gets a code); the oldest person on a shared number holds it and the others on that number are their family profiles. A child's account can be given a username + password by the parent (Family profiles → 🔑 Create login)

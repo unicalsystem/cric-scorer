@@ -297,5 +297,6 @@ function client_extras(array $u): array {
         'team_requests' => team_requests_waiting($u),
         'force_version' => setting('force_version'),
         'community' => community_home($u),
+        'team_logos' => team_logo_map(),          // v1.36
     ];
 }

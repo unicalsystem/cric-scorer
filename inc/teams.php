@@ -128,3 +128,51 @@ function tournament_assign_scorers(array $t, string $side, array $u): array {
     }
     return ['assigned' => $done, 'skipped' => $skipped];
 }
+
+/* ---------- v1.36: team logos ---------- */
+
+function schema_v136(): void {
+    if (!val("SHOW COLUMNS FROM teams LIKE 'logo_url'")) db()->exec("ALTER TABLE teams ADD COLUMN logo_url VARCHAR(160) NULL AFTER color");
+}
+
+/** {team id: logo url} for every team that has a logo - sent once at start-up so badges everywhere can show it */
+function team_logo_map(): array {
+    $m = [];
+    foreach (rows('SELECT id, logo_url FROM teams WHERE logo_url IS NOT NULL') as $r) $m[(int)$r['id']] = $r['logo_url'];
+    return $m;
+}
+
+function team_logo_delete_file(?string $url): void {
+    if ($url && preg_match('#^uploads/logos/t\d+_[a-f0-9]{12}\.png$#', $url)) { $f = __DIR__ . '/../' . $url; if (is_file($f)) @unlink($f); }
+}
+
+/** Upload (image = data URL) or remove (image empty) a team's logo. Re-drawn as a 256×256 PNG, transparency kept. */
+function team_logo_set(array $u, array $in): array {
+    $t = row('SELECT * FROM teams WHERE id=?', [(int)($in['id'] ?? 0)]);
+    if (!$t || !can_edit_team($t, $u)) fail('Only the team owner can change the logo', 403);
+    $old = $t['logo_url'];
+    $data = (string)($in['image'] ?? '');
+    if ($data === '') { q('UPDATE teams SET logo_url=NULL WHERE id=?', [$t['id']]); team_logo_delete_file($old); return ['logo' => null]; }
+    if (!preg_match('#^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/=\r\n]+)$#', $data, $m)) fail('Please choose a JPG, PNG or WebP image');
+    $bin = base64_decode($m[2], true);
+    if ($bin === false || strlen($bin) < 100) fail('That image could not be read');
+    if (strlen($bin) > 3 * 1024 * 1024) fail('That image is too big (max 3 MB)');
+    $info = @getimagesizefromstring($bin);
+    if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)) fail('That file is not an image');
+    if ($info[0] > 4096 || $info[1] > 4096 || $info[0] < 16 || $info[1] < 16) fail('Please use a normal-sized image');
+    if (!function_exists('imagecreatefromstring') || !($src = @imagecreatefromstring($bin))) fail('The server cannot process images (PHP GD is missing)');
+    $dir = __DIR__ . '/../uploads/logos';
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) fail('The server could not create the logos folder (uploads/logos)');
+    // fit the whole logo inside 256×256 on a transparent square (no cropping), which also strips anything hidden in the file
+    $w = imagesx($src); $h = imagesy($src); $S = 256; $sc = min($S / $w, $S / $h); $nw = max(1, (int)round($w * $sc)); $nh = max(1, (int)round($h * $sc));
+    $dst = imagecreatetruecolor($S, $S); imagealphablending($dst, false); imagesavealpha($dst, true);
+    imagefill($dst, 0, 0, imagecolorallocatealpha($dst, 0, 0, 0, 127)); imagealphablending($dst, true);
+    imagecopyresampled($dst, $src, (int)(($S - $nw) / 2), (int)(($S - $nh) / 2), 0, 0, $nw, $nh, $w, $h);
+    imagesavealpha($dst, true);
+    $file = 'uploads/logos/t' . (int)$t['id'] . '_' . bin2hex(random_bytes(6)) . '.png';
+    if (!imagepng($dst, __DIR__ . '/../' . $file, 9)) fail('The server could not save the logo');
+    imagedestroy($src); imagedestroy($dst);
+    q('UPDATE teams SET logo_url=? WHERE id=?', [$file, $t['id']]);
+    team_logo_delete_file($old);
+    return ['logo' => $file];
+}

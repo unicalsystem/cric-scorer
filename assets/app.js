@@ -36,8 +36,11 @@ function textOn(hex) {
   const r = parseInt(h.substr(0, 2), 16), g = parseInt(h.substr(2, 2), 16), b = parseInt(h.substr(4, 2), 16);
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? '#13241b' : '#ffffff';
 }
+function teamLogo(t) { return t && (t.logo_url || (t.id && S.extras && S.extras.team_logos && S.extras.team_logos[t.id])) || null; }
 function badge(t, cls = '') {
   if (!t) return '';
+  const lg = teamLogo(t);   // v1.36: team logo instead of the coloured initials when there is one
+  if (lg) return `<span class="badge logo ${cls}" style="border-color:${esc(t.color || '#ddd')}"><img src="${esc(lg)}" alt="${esc(t.short_name || t.name || '')}" loading="lazy"></span>`;
   return `<span class="badge ${cls}" style="background:${esc(t.color)};color:${textOn(t.color)}">${esc(String(t.short_name || t.name || '?').slice(0, 4))}</span>`;
 }
 const ROLE_ICON = { 'Batter': '🏏', 'Wicket-keeper': '🧤', 'All-rounder': '⭐', 'Bowler': '🎯' };
@@ -1468,7 +1471,7 @@ async function viewTeam(id) {
       <div class="s ellipsis">${esc([p.batting_style, p.bowling_style].filter(Boolean).join(' · '))}${p.country && t.category !== 'international' ? ' · ' + esc(p.country) : ''}</div></div>
       <span class="chev">${I.chev}</span></div>`).join('')}</div>`;
   }).join('');
-  mount(topbar(t.short_name, { back: true, actions }) + `<div class="team-hero" style="background:${esc(t.color)};color:${fg}"><span class="badge lg" style="background:${fg === '#ffffff' ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.08)'};color:${fg}">${esc(String(t.short_name).slice(0, 4))}</span>
+  mount(topbar(t.short_name, { back: true, actions }) + `<div class="team-hero" style="background:${esc(t.color)};color:${fg}"><span style="position:relative;flex:none" ${t.can_edit ? 'onclick="App.logoSheet()" title="Team logo"' : ''}>${teamLogo(t) ? `<span class="badge logo lg"><img src="${esc(teamLogo(t))}" alt=""></span>` : `<span class="badge lg" style="background:${fg === '#ffffff' ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.08)'};color:${fg}">${esc(String(t.short_name).slice(0, 4))}</span>`}${t.can_edit ? '<span class="logo-cam">📷</span>' : ''}</span>
       <div><h2>${esc(t.name)}</h2><p>${{ ipl: 'IPL franchise', international: 'International team', custom: 'Custom team' }[t.category]} · ${plural(d.players.length, 'player')}</p>
       <p>${t.captain ? 'Captain: ' + esc(t.captain) : (t.can_edit ? 'No captain yet' : '')}${t.can_edit ? ` <button class="btn sm light" style="margin-left:6px;padding:4px 10px" onclick="App.captainSheet()">©️ ${t.captain ? 'Change' : 'Pick'} captain</button>` : ''}</p>${t.category === 'custom' && S.user && S.user.is_admin ? `<p>👑 Owner: ${esc(t.owner_name || 'nobody')} <button class="btn sm light" style="margin-left:6px;padding:4px 10px" onclick="App.ownerSheet()">Change owner</button></p>` : ''}${t.home_ground ? `<p>🏟️ ${esc(t.home_ground)}</p>` : ''}</div></div>
     <div class="content">
@@ -1517,6 +1520,36 @@ App.setOwner = uid => {
     closeSheet(); toast(`${r.owner_name} now owns ${t.name} ✓`); render();
   }), false);
 };
+/* ---------- v1.36: team logo (owner / admin) ---------- */
+App.logoSheet = () => {
+  const t = S.team.team, has = !!teamLogo(t);
+  sheet(`<h3>🖼️ Team logo</h3><div class="sub">Shown instead of the coloured initials everywhere - match cards, scorecards, points tables. Square images look best; transparent PNGs are kept transparent.</div>
+    ${has ? `<div style="text-align:center;margin:6px 0 12px"><span class="badge logo lg" style="width:96px;height:96px"><img src="${esc(teamLogo(t))}" alt=""></span></div>` : ''}
+    <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp" hidden onchange="App.logoChosen(this)">
+    <button class="btn block" onclick="document.getElementById('logoFile').click()">📷 ${has ? 'Change logo' : 'Upload logo'}</button>
+    ${has ? '<button class="btn light block" style="margin-top:8px;color:var(--red)" onclick="App.logoSave(\'\')">Remove logo</button>' : ''}`);
+};
+App.logoChosen = input => {
+  const f = input.files && input.files[0]; input.value = '';
+  if (!f) return;
+  if (!/^image\//.test(f.type)) return toast('Please choose an image', true);
+  if (f.size > 15 * 1024 * 1024) return toast('That image is too big', true);
+  const url = URL.createObjectURL(f), img = new Image();
+  img.onload = () => {   // shrink on the phone (keep the whole logo, keep transparency) so the upload is small
+    const S2 = 512, sc = Math.min(1, S2 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+    App.logoSave(c.toDataURL('image/png'));
+  };
+  img.onerror = () => toast('That image could not be read', true);
+  img.src = url;
+};
+App.logoSave = image => run(async () => {
+  const t = S.team.team, r = await api('team_logo', { id: t.id, image });
+  S.extras = S.extras || {}; S.extras.team_logos = S.extras.team_logos || {};
+  if (r.logo) S.extras.team_logos[t.id] = r.logo; else delete S.extras.team_logos[t.id];
+  t.logo_url = r.logo; closeSheet(); toast(r.logo ? 'Logo saved ✓' : 'Logo removed'); render();
+});
 App.setCaptain = pid => run(async () => { const r = await api('team_captain', { id: S.team.team.id, player_id: pid }); closeSheet(); toast(r.captain ? `${r.captain} is the captain ✓` : 'Captain removed'); render(); });
 
 /* ---------- Who can play with a custom team ---------- */
