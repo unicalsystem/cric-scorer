@@ -739,8 +739,9 @@ function match_state(int $matchId, ?array $u): array {
         'photos' => match_photos($m, $u),
         'can_photo' => can_add_photo($m, $u),
         'can_edit' => can_score_match($m, $u),
-        'is_owner' => can_edit_owned($m, $u),
-        'scorer_options' => can_edit_owned($m, $u) && in_array($m['status'], ['scheduled', 'live'], true) ? match_scorer_options($m) : [],
+        'is_owner' => can_manage_match($m, $u),
+        'my_role' => match_role($m, $u),
+        'scorer_options' => can_manage_match($m, $u) && in_array($m['status'], ['scheduled', 'live'], true) ? match_scorer_options($m) : [],
     ];
 }
 

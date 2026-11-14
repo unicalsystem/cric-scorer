@@ -250,10 +250,41 @@ function can_edit_team(?array $team, array $u): bool {
     if ($u['is_admin']) return true;
     return $team['category'] === 'custom' && (int)$team['owner_id'] === (int)$u['id'];
 }
-/** Who may score a match: the player who created it, the admin, or the scorer they named */
+/** Who may start and score a match: anyone who manages it, the scorer they named, or a captain of either side (v1.40) */
 function can_score_match(?array $m, ?array $u): bool {
-    if (!$m || !$u) return false;
-    return can_edit_owned($m, $u) || (!empty($m['scorer_id']) && (int)$m['scorer_id'] === (int)$u['id']);
+    return match_role($m, $u) !== null;
+}
+/** Who may do everything the admin can with a match (scorer, visibility, delete): admin, creator, the tournament's or club's owner, or the owner of either team (v1.40) */
+function can_manage_match(?array $m, ?array $u): bool {
+    return in_array(match_role($m, $u), ['admin', 'creator', 'tournament owner', 'club owner', 'team owner'], true);
+}
+/** This person's strongest role in a match: admin, creator, tournament owner, club owner, team owner, scorer, captain - or null */
+function match_role(?array $m, ?array $u): ?string {
+    if (!$m || !$u) return null;
+    static $cache = [];
+    $key = (int)$m['id'] . ':' . (int)$u['id'] . ':' . (int)($m['scorer_id'] ?? 0);
+    if (array_key_exists($key, $cache)) return $cache[$key];
+    $uid = (int)$u['id']; $role = null;
+    if (!empty($u['is_admin'])) $role = 'admin';
+    elseif ((int)$m['owner_id'] === $uid) $role = 'creator';
+    elseif (!empty($m['tournament_id']) && ($t = row('SELECT owner_id, academy_id FROM tournaments WHERE id=?', [$m['tournament_id']]))) {
+        if ((int)$t['owner_id'] === $uid) $role = 'tournament owner';
+        elseif (!empty($t['academy_id']) && val('SELECT 1 FROM academies WHERE id=? AND owner_id=?', [$t['academy_id'], $uid])) $role = 'club owner';
+    }
+    $teams = [(int)$m['team1_id'], (int)$m['team2_id']];
+    if (!$role && val("SELECT 1 FROM teams WHERE id IN (?,?) AND category='custom' AND owner_id=?", array_merge($teams, [$uid]))) $role = 'team owner';
+    if (!$role && !empty($m['scorer_id']) && (int)$m['scorer_id'] === $uid) $role = 'scorer';
+    if (!$role) {
+        foreach ($teams as $tid) foreach (team_managers($tid) as $x) if ($x['role'] === 'captain' && $x['id'] === $uid) { $role = 'captain'; break 2; }
+        // the captain picked in this match's playing XI, when that player is linked to this account
+        if (!$role && !empty($u['player_id']) && val('SELECT 1 FROM match_players WHERE match_id=? AND player_id=? AND is_captain=1', [$m['id'], $u['player_id']])) $role = 'captain';
+    }
+    return $cache[$key] = $role;
+}
+/** Tournament: its creator, the owner of the club that runs it, or the admin (v1.40) */
+function can_manage_tournament(?array $t, ?array $u): bool {
+    if (can_edit_owned($t, $u)) return true;
+    return $t && $u && !empty($t['academy_id']) && (bool)val('SELECT 1 FROM academies WHERE id=? AND owner_id=?', [$t['academy_id'], $u['id']]);
 }
 function can_edit_owned(?array $obj, ?array $u): bool {
     if (!$obj || !$u) return false;

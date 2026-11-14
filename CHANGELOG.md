@@ -4,6 +4,12 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.40.0 - 14 November 2026
+- **Captains can start matches**: the captain of either team (when their player is linked to their account, or they were picked as captain in the playing XI) can now pick the XI, do the toss, start and score the match - no need to be named scorer first
+- **Owners get full control**: team owners (of either side), the tournament's creator and the club owner of a club tournament can now do everything the admin can with a match - start, score, choose the scorer, make it private/public, abandon, edit balls and delete
+- Club owners can also edit their club's tournaments (fixtures, playoffs, assign scorers) even when someone else created them
+- The match header shows your role, e.g. "©️ Captain - you can start & score" or "👑 Team owner - full control"
+
 ## 1.39.0 - 14 November 2026
 - **Admin → 🟢 Online**: how many people are using the app right now (signed-in players + guests) and **who** - name, @username, phone or computer, how long they've been on, and which screen they're on (a match shows its teams, 🔴 if live; tap to open it). Players seen in the last 15 minutes are listed below. Refreshes by itself every 15 seconds
 - The same "Online now" card (count + names) is at the top of Admin → Stats

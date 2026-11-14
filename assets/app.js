@@ -719,7 +719,7 @@ function drawMatch(first) {
   const actions = `<button class="icon-btn" id="spk" aria-label="Sound and commentary" onclick="App.soundSheet()">${spkIcon()}</button><button class="icon-btn" aria-label="Share" onclick="App.shareMatch()">${I.share}</button>` +
     (st.can_edit ? `<button class="icon-btn" aria-label="Match options" onclick="App.matchMenu()">${I.dots}</button>` :
       '');
-  const sub = [m.visibility === 'private' ? '🔒 Private' : '', m.scorer && st.can_edit && !st.is_owner ? '✍️ You are the scorer' : m.scorer ? '✍️ Scorer: ' + m.scorer.display_name : '', m.title, m.tournament?.name].filter(Boolean).join(' · ');
+  const sub = [m.visibility === 'private' ? '🔒 Private' : '', st.my_role === 'captain' ? '©️ Captain - you can start & score' : ['team owner', 'tournament owner', 'club owner'].includes(st.my_role) ? '👑 ' + st.my_role[0].toUpperCase() + st.my_role.slice(1) + ' - full control' : m.scorer && st.can_edit && !st.is_owner ? '✍️ You are the scorer' : m.scorer ? '✍️ Scorer: ' + m.scorer.display_name : '', m.title, m.tournament?.name].filter(Boolean).join(' · ');
   let html = topbar(`${t1.short_name} vs ${t2.short_name}`, { back: true, actions, sub });
   if (st.viewers != null) S.mViewers = st.viewers;
   if (m.status === 'live') html += `<div class="vw-pill" id="vwPill" ${S.mViewers ? '' : 'hidden'}><i></i><span>${S.mViewers || 0}</span> watching</div>`;   // v1.37

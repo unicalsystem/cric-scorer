@@ -168,7 +168,7 @@ function handle(string $action, array $in, ?array $u) {
     case 'remove_follower': return remove_follower($u, $in);
     case 'match_visibility': {
         $m = load_match(int_in($in, 'id'));
-        if (!can_edit_owned($m, $u)) fail('Only the scorer of this match can change who sees it', 403);
+        if (!can_manage_match($m, $u)) fail('Only the match creator, team owners or the admin can change who sees it', 403);
         $v = ($in['visibility'] ?? '') === 'private' ? 'private' : 'public';
         q('UPDATE matches SET visibility=? WHERE id=?', [$v, $m['id']]);
         return match_state((int)$m['id'], $u);
@@ -506,7 +506,7 @@ function handle(string $action, array $in, ?array $u) {
         if (!val('SELECT 1 FROM teams WHERE id=?', [$t1]) || !val('SELECT 1 FROM teams WHERE id=?', [$t2])) fail('Team not found');
         require_team_use($t1, $u); require_team_use($t2, $u);
         $tour = nint($in['tournament_id'] ?? null);
-        if ($tour && !can_edit_owned(row('SELECT * FROM tournaments WHERE id=?', [$tour]), $u)) fail('You cannot add matches to this tournament', 403);
+        if ($tour && !can_manage_tournament(row('SELECT * FROM tournaments WHERE id=?', [$tour]), $u)) fail('You cannot add matches to this tournament', 403);
         $date = str_in($in, 'match_date', 20);
         $date = $date ? date('Y-m-d H:i:s', strtotime($date)) : date('Y-m-d H:i:s');
         $visibility = ($in['visibility'] ?? '') === 'private' ? 'private' : 'public';
@@ -556,13 +556,13 @@ function handle(string $action, array $in, ?array $u) {
 
     case 'match_scorer': {                            // the creator names who scores (by username), or takes it back
         $m = load_match(int_in($in, 'id'));
-        if (!can_edit_owned($m, $u)) fail('Only the player who created this match can choose the scorer', 403);
+        if (!can_manage_match($m, $u)) fail('Only the match creator, team owners or the admin can choose the scorer', 403);
         $un = strtolower(trim((string)($in['username'] ?? '')));
         if (!empty($in['user_id'])) { $un = (string)val('SELECT username FROM users WHERE id=?', [int_in($in, 'user_id')]); if ($un === '') fail('Player not found'); }   // v1.29: picked from the teams' owners / captains
         if ($un === '') { if ($m['scorer_id']) match_log($m, 'Scoring taken back by the creator', $u); q('UPDATE matches SET scorer_id=NULL WHERE id=?', [$m['id']]); return ['scorer' => null]; }
         $p = row('SELECT id, username, display_name FROM users WHERE username=?', [$un]);
         if (!$p) fail('No player with that exact username');
-        if ((int)$p['id'] === (int)$m['owner_id']) fail("That's you - you can always score your own match");
+        if ((int)$p['id'] === (int)$m['owner_id']) fail("The match creator can always score - no need to name them");
         q('UPDATE matches SET scorer_id=? WHERE id=?', [$p['id'], $m['id']]);
         match_log($m, 'Scoring handed to ' . $p['display_name'], $u);
         return ['scorer' => ['id' => (int)$p['id'], 'username' => $p['username'], 'display_name' => $p['display_name']]];
@@ -570,7 +570,7 @@ function handle(string $action, array $in, ?array $u) {
 
     case 'match_delete': {
         $m = load_match(int_in($in, 'id'));
-        if (!can_edit_owned($m, $u)) fail('Not allowed', 403);
+        if (!can_manage_match($m, $u)) fail('Not allowed', 403);
         match_photos_purge((int)$m['id']);
         q('DELETE FROM matches WHERE id=?', [$m['id']]);
         return ['ok' => true];
@@ -647,7 +647,7 @@ function handle(string $action, array $in, ?array $u) {
                   FROM tournaments t LEFT JOIN match_types mt ON mt.id=t.match_type_id LEFT JOIN users u ON u.id=t.owner_id WHERE t.id=?', [int_in($in, 'id')]);
         if (!$t) fail('Tournament not found', 404);
         if (!can_view_tournament($t, $u)) fail('This tournament is for club members only 🔒', 403);
-        $t['can_edit'] = can_edit_owned($t, $u);
+        $t['can_edit'] = can_manage_tournament($t, $u);
         if (($t['format'] ?? '') === 'league_final') playoff_advance((int)$t['id']);   // before listing matches, so new playoff games show up
         $teams = rows('SELECT t.id, t.name, t.short_name, t.color, t.league_group, t.league_cat, (SELECT COUNT(*) FROM players p WHERE p.team_id=t.id) players FROM tournament_teams tt JOIN teams t ON t.id=tt.team_id WHERE tt.tournament_id=? ORDER BY t.league_cat, t.league_group, t.name', [$t['id']]);
         [$vs, $vp] = vis_sql($u);
@@ -682,7 +682,7 @@ function handle(string $action, array $in, ?array $u) {
         $vals = [$name, $fmt, nint($in['match_type_id'] ?? null), str_in($in, 'start_date', 10) ?: null, str_in($in, 'end_date', 10) ?: null, str_in($in, 'venue', 150) ?: null, $clubId, $vis];
         if ($id) {
             $t = row('SELECT * FROM tournaments WHERE id=?', [$id]);
-            if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
+            if (!can_manage_tournament($t, $u)) fail('Not allowed', 403);
             q('UPDATE tournaments SET name=?, format=?, match_type_id=?, start_date=?, end_date=?, venue=?, academy_id=?, visibility=? WHERE id=?', array_merge($vals, [$id]));
             q('DELETE FROM tournament_teams WHERE tournament_id=?', [$id]);
         } else {
@@ -696,7 +696,7 @@ function handle(string $action, array $in, ?array $u) {
 
     case 'tournament_delete': {
         $t = row('SELECT * FROM tournaments WHERE id=?', [int_in($in, 'id')]);
-        if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
+        if (!can_manage_tournament($t, $u)) fail('Not allowed', 403);
         if (!empty($in['with_matches'])) q('DELETE FROM matches WHERE tournament_id=?', [$t['id']]);
         q('DELETE FROM tournaments WHERE id=?', [$t['id']]);
         return ['ok' => true];
@@ -704,7 +704,7 @@ function handle(string $action, array $in, ?array $u) {
 
     case 'tournament_fixtures': {
         $t = row('SELECT t.*, mt.overs, mt.balls_per_over, mt.players_per_side, mt.max_overs_bowler, mt.extra_bowlers, mt.extra_overs, mt.last_man_stands, mt.bouncers_per_over FROM tournaments t LEFT JOIN match_types mt ON mt.id=t.match_type_id WHERE t.id=?', [int_in($in, 'id')]);
-        if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
+        if (!can_manage_tournament($t, $u)) fail('Not allowed', 403);
         if (val('SELECT 1 FROM matches WHERE tournament_id=? LIMIT 1', [$t['id']])) fail('Fixtures already exist for this tournament');
         $teams = array_map('intval', array_column(rows('SELECT team_id FROM tournament_teams WHERE tournament_id=?', [$t['id']]), 'team_id'));
         $pairs = [];
@@ -741,14 +741,14 @@ function handle(string $action, array $in, ?array $u) {
 
     case 'tournament_scorers': {                       // v1.29: hand all scheduled matches to team owners / captains
         $t = row('SELECT * FROM tournaments WHERE id=?', [int_in($in, 'id')]);
-        if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
+        if (!can_manage_tournament($t, $u)) fail('Not allowed', 403);
         $side = in_array($in['side'] ?? '', ['team1', 'team2', 'clear'], true) ? $in['side'] : 'team1';
         return tournament_assign_scorers($t, $side, $u);
     }
 
     case 'tournament_playoffs': {                      // v1.27: create round 1 of the playoffs from the league table
         $t = row('SELECT * FROM tournaments WHERE id=?', [int_in($in, 'id')]);
-        if (!can_edit_owned($t, $u)) fail('Not allowed', 403);
+        if (!can_manage_tournament($t, $u)) fail('Not allowed', 403);
         return playoff_start((int)$t['id'], !empty($in['force']));
     }
 
