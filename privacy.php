@@ -73,7 +73,7 @@ page_start([
   <li><b>Public matches</b> can be watched by anyone you share the link with, even without an account. <b>Private matches</b> can only be opened by the person who scored them.</li>
   <li>Shared match links show a summary (teams, score and result) when posted in apps like WhatsApp. These match pages are marked so that <b>search engines do not list them</b>, and our sitemap never includes players, profiles or matches.</li>
   <li>In <b>Gully Duel</b>, the player you play against sees your display name and photo or figure during the game.</li>
-  <li>The app administrator (the family member or person who set up this Cric-Scorer website) can see all accounts and matches in order to supervise and look after the service. The admin dashboard itself shows only totals and charts (such as how many players joined), and help messages without the sender's name.</li>
+  <li>The app administrator (the family member or person who set up this Cric-Scorer website) can see all accounts and matches in order to supervise and look after the service. The admin dashboard shows totals and charts (such as how many players joined), help messages without the sender's name, and a list of which signed-in players are using the app right now (their name and which screen they are on, kept for one day). Visitors who are not signed in are only counted, never named.</li>
 </ul>
 
 <h2 id="children">5. Children and parents</h2>

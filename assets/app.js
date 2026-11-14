@@ -2555,6 +2555,17 @@ async function viewFollowList(id, type) {
 App.removeFollower = id => confirmSheet('Remove follower?', 'They will stop following you. They can follow you again unless your profile is private.', 'Remove',
   () => run(async () => { await api('remove_follower', { id }); closeSheet(); toast('Follower removed'); render(); }));
 
+/* ---------- v1.39: "I'm here" heartbeat for Admin → Online (every 45 s while the screen is on, and on each new screen) ---------- */
+let lastPing = 0;
+function presencePing(force = false) {
+  if (document.hidden || (!force && Date.now() - lastPing < 3000)) return;
+  lastPing = Date.now();
+  fetch('api.php?action=presence', { method: 'POST', credentials: 'same-origin', keepalive: true,
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'CricScorer', 'X-App-Version': window.CS_VERSION || '' },
+    body: JSON.stringify({ screen: location.hash || '#/' }) }).catch(() => {});
+}
+setInterval(() => presencePing(true), 45000);
+
 /* ---------- Boot ---------- */
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.deferredInstall = e; });
 (async function boot() {
@@ -2562,9 +2573,10 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.defe
   initErrorReports();
   if (/[?&]verified=1/.test(location.search)) { history.replaceState(null, '', location.pathname + location.hash); setTimeout(() => toast('✅ Mobile verified - welcome!'), 600); }
   initPullToRefresh();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) api('me').then(r => { S.extras = r; if (r.user) S.user = r.user; checkVersion(r.version, r.force_version); }).catch(() => {}); });
-  window.addEventListener('hashchange', () => { navDepth++; render(); });
+  document.addEventListener('visibilitychange', () => { presencePing(true); if (!document.hidden) api('me').then(r => { S.extras = r; if (r.user) S.user = r.user; checkVersion(r.version, r.force_version); }).catch(() => {}); });
+  window.addEventListener('hashchange', () => { navDepth++; render(); presencePing(); });
   await render();
+  presencePing(true);
   const sp = $('#splash');
   if (sp) { setTimeout(() => sp.classList.add('out'), 350); setTimeout(() => sp.remove(), 900); }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

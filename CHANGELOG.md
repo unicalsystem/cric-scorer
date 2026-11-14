@@ -4,6 +4,11 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.39.0 - 14 November 2026
+- **Admin → 🟢 Online**: how many people are using the app right now (signed-in players + guests) and **who** - name, @username, phone or computer, how long they've been on, and which screen they're on (a match shows its teams, 🔴 if live; tap to open it). Players seen in the last 15 minutes are listed below. Refreshes by itself every 15 seconds
+- The same "Online now" card (count + names) is at the top of Admin → Stats
+- Every open app checks in about every 45 seconds and on each new screen; "online" = seen in the last 90 seconds. Guests are counted, never named. Privacy Policy updated to say so
+
 ## 1.38.2 - 14 November 2026
 - Fix: Quick Toss team name boxes closed the phone keyboard after every letter, so a full name could not be typed
 

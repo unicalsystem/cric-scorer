@@ -1,3 +1,3 @@
 <?php
 /* Cric-Scorer app version - bump this on every release so phones detect the update */
-define('APP_VERSION', '1.38.2');
+define('APP_VERSION', '1.39.0');

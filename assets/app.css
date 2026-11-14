@@ -538,6 +538,11 @@ body:not(.app-mode) #app{min-height:0;padding:0;box-shadow:none}
 .adm-alert.warn{background:#fdecee;color:#8a1624}
 @media (prefers-color-scheme:dark){.adm-alert{background:#2e2410;color:#ffe0a3}.adm-alert.warn{background:#3a1519;color:#ffc9cf}}
 .adm-people{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 6px}
+.adm-online{border:2px solid #2fb344}
+.adm-big{font-family:var(--display);font-size:40px;line-height:1;color:#2fb344}
+.adm-dot{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#2fb344;border:2px solid var(--card)}
+.adm-dot.inline{position:static;display:inline-block;width:8px;height:8px;border:0;margin-right:6px;vertical-align:middle;animation:admPulse 1.6s ease-in-out infinite}
+@keyframes admPulse{50%{opacity:.35}}
 .adm-people .chip button{border:0;background:none;color:inherit;font-weight:900;margin-left:4px;cursor:pointer}
 .adm-new{border:2px solid var(--lime)}
 .adm-cl{margin:10px 0}.adm-cl ul{margin:4px 0 0;padding-left:20px;font-size:14px}

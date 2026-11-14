@@ -1,6 +1,6 @@
 <?php
-/* Cric-Scorer - admin portal: settings, feature roll-out, anonymous usage stats, help desk, announcements, error reports.
-   The portal shows counts and charts only - never names, usernames, emails or photos. */
+/* Cric-Scorer - admin portal: settings, feature roll-out, usage stats, who is online, help desk, announcements, error reports.
+   Stats are counts and charts; "Online" (v1.39) lists the signed-in players using the app right now. Emails and numbers are never shown. */
 
 /* ---------- Settings ---------- */
 function setting(string $k, $default = null) {
@@ -208,6 +208,7 @@ function help_action(string $action, array $u, array $in) {
 function admin_action(string $action, array $u, array $in) {
     switch ($action) {
     case 'admin_stats': return admin_stats();
+    case 'admin_online': return admin_online();          // v1.39
     case 'admin_features': return ['features' => admin_features()];
     case 'admin_feature_set': return admin_feature_action($in);
 

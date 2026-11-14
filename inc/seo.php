@@ -14,7 +14,7 @@ defined('CONTACT_EMAIL')     || define('CONTACT_EMAIL', 'privacy@cricscorerapp.c
 defined('ORG_NAME')          || define('ORG_NAME', 'Unical Systems Private Limited');
 defined('ORG_ADDRESS')       || define('ORG_ADDRESS', '206, 3rd Floor, DSL Abacus IT Park, IDA Uppal, Hyderabad, Telangana 500039, India');
 defined('GRIEVANCE_OFFICER') || define('GRIEVANCE_OFFICER', 'Shiva Kaluvakota');
-defined('POLICY_UPDATED')    || define('POLICY_UPDATED', '24 October 2026');
+defined('POLICY_UPDATED')    || define('POLICY_UPDATED', '14 November 2026');
 
 const SEO_DEFAULT_TITLE = 'Cric-Scorer - Free Cricket Scoring App with Live Scores, Tournaments & Cricket Lessons';
 const SEO_DEFAULT_DESC = 'Score cricket matches ball by ball for free on your phone. Live scorecards, commentary, tournaments with points tables, rain rules (DLS), IPL & international squads and a cricket academy for kids. No download needed.';

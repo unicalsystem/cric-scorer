@@ -1,22 +1,23 @@
-/* Cric-Scorer - admin portal: usage stats (totals only - no personal data), feature roll-out, updates, help desk, announcements, errors */
+/* Cric-Scorer - admin portal: usage stats, who is online (v1.39), feature roll-out, updates, help desk, announcements, errors */
 'use strict';
 const Admin = (() => {
   const A = {};
-  const TABS = [['stats', '📊 Stats'], ['users', '👥 Players'], ['roster', '🧢 Team players'], ['imports', '📥 Imports'], ['features', '🚦 Roll-out'], ['update', '⬆️ Updates'], ['help', '💬 Help desk'], ['news', '📣 News'], ['errors', '🐞 Errors']];
+  const TABS = [['stats', '📊 Stats'], ['online', '🟢 Online'], ['users', '👥 Players'], ['roster', '🧢 Team players'], ['imports', '📥 Imports'], ['features', '🚦 Roll-out'], ['update', '⬆️ Updates'], ['help', '💬 Help desk'], ['news', '📣 News'], ['errors', '🐞 Errors']];
   let userQ = '', userPage = 0;
-  let tab = 'stats', helpStatus = 'open';
+  let tab = 'stats', helpStatus = 'open', onlineTimer = null;
   const num = n => Number(n || 0).toLocaleString('en-IN');
 
   function frame(body, sub = '') {
-    return topbar('Admin', { back: true, sub: sub || 'Totals only - no personal details' }) + `<div class="content admin">
+    return topbar('Admin', { back: true, sub: sub || 'Admin portal' }) + `<div class="content admin">
       <div class="adm-tabs">${TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" onclick="Admin.tab('${k}')">${l}</button>`).join('')}</div>${body}</div>`;
   }
   A.tab = k => { tab = k; A.show(); };
   A.show = async (k) => {
     if (k) tab = k;
     if (!S.user || !S.user.is_admin) { mount(topbar('Admin', { back: true }) + '<div class="content"><div class="empty">Only the administrator can open this page.</div></div>', 'more'); return; }
+    if (onlineTimer) { clearInterval(onlineTimer); onlineTimer = null; }
     mount(frame(sk(4)), 'more');
-    const fn = { stats, users, roster, imports, features, update, help, news, errors }[tab];
+    const fn = { stats, online, users, roster, imports, features, update, help, news, errors }[tab];
     await fn();
   };
 
@@ -33,8 +34,10 @@ const Admin = (() => {
     return e.map(([k, v]) => `<div class="adm-h"><span>${esc(k)}</span><div><i style="width:${Math.max(2, v / max * 100)}%"></i></div><b>${num(v)}</b></div>`).join('');
   }
   async function stats() {
-    const d = await api('admin_stats'), u = d.users, m = d.matches, a = d.academy, g = d.games;
+    const [d, on] = await Promise.all([api('admin_stats'), api('admin_online').catch(() => null)]);
+    const u = d.users, m = d.matches, a = d.academy, g = d.games;
     mount(frame(`
+      ${on ? onlineCard(on, true) : ''}
       ${d.support.open || d.support.errors_week ? `<div class="adm-alert">${d.support.open ? `💬 <b>${d.support.open}</b> help message${d.support.open > 1 ? 's' : ''} waiting · <a href="javascript:Admin.tab('help')">Reply</a>` : ''} ${d.support.errors_week ? `🐞 <b>${d.support.errors_week}</b> error${d.support.errors_week > 1 ? 's' : ''} this week · <a href="javascript:Admin.tab('errors')">Check</a>` : ''}</div>` : ''}
       <div class="section"><h2>👥 Players</h2></div>
       <div class="adm-grid">${tile(u.total, 'Joined')}${tile(u.week, 'New this week')}${tile(u.active_day, 'Active today')}${tile(u.active_week, 'Active this week')}${tile(u.active_month, 'Active in 30 days')}${tile(u.google, 'Use Google sign-in')}${tile(u.private, 'Private profiles')}${tile(u.follows, 'Follows')}</div>
@@ -49,7 +52,58 @@ const Admin = (() => {
       <div class="card"><b>Games per day</b>${bars30(g.per_day, '#7048e8')}</div>
       <div class="section"><h2>🎓 Cricket Academy</h2></div>
       <div class="adm-grid">${tile(a.learners, 'Learners')}${tile(a.passed, 'Lessons passed')}${tile(a.three_star, '3-star lessons')}${tile(a.attempts, 'Quiz attempts')}${tile(a.certified, 'Certified experts')}</div>
-      <p class="small muted" style="text-align:center">Updated ${esc(d.generated)} · These are totals only. No names, usernames, emails or photos are shown here.</p>`), 'more');
+      <p class="small muted" style="text-align:center">Updated ${esc(d.generated)} · Apart from "Online now", these are totals only.</p>`), 'more');
+    startOnlineRefresh('stats');
+  }
+
+  /* ---------- v1.39: who is online now ---------- */
+  const SCREENS = { home: 'Home', match: 'Match', matches: 'Matches', new: 'New match', team: 'Team', teams: 'Teams', tournament: 'Tournament', tournaments: 'Tournaments',
+    stats: 'Stats', news: 'News', family: 'Family profiles', types: 'Match types', profile: 'My profile', more: 'More', people: 'Players', academies: 'Academies', academy: 'Academy',
+    user: 'A profile', apl: 'APL Auction', play: 'Gully Duel', admin: 'Admin', help: 'Help', learn: 'Cricket Academy', toss: 'Quick Toss', login: 'Sign in', wa: 'WhatsApp sign-in', player: 'Player' };
+  function screenLabel(scr, matches) {
+    const parts = String(scr || 'home').split('/'), k = parts[0] || 'home';
+    if (k === 'match' && parts[1] && matches[parts[1]]) { const mm = matches[parts[1]]; return (mm.live ? '🔴 ' : '') + mm.name; }
+    return SCREENS[k] || k.charAt(0).toUpperCase() + k.slice(1);
+  }
+  const agoTxt = s => s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : Math.round(s / 3600) + ' h ago';
+  const forTxt = s => s < 90 ? 'just came in' : s < 3600 ? 'for ' + Math.round(s / 60) + ' min' : 'for ' + (s / 3600).toFixed(1).replace('.0', '') + ' h';
+  const DEV = { Android: '📱', iPhone: '📱', iPad: '📱', Windows: '💻', Mac: '💻', Linux: '💻', Chromebook: '💻' };
+  function personItem(p, d, live) {
+    const scr = String(p.screen || ''), mid = (scr.match(/^match\/(\d+)/) || [])[1];
+    return `<div class="item" style="cursor:pointer" onclick="go('#/user/${p.id}')">
+      <span style="position:relative;display:inline-flex">${personAvatar(p, 40)}${live ? '<i class="adm-dot"></i>' : ''}</span>
+      <div class="grow"><div class="t ellipsis">${esc(p.display_name)}${p.is_admin ? ' <span class="role-tag">admin</span>' : ''}</div>
+        <div class="s">@${esc(p.username)} · ${DEV[p.device] || '📟'} ${esc(p.device || '')} · ${live ? forTxt(p.online_for) : 'seen ' + agoTxt(p.ago)}</div>
+        <div class="s">📍 ${mid ? `<a class="link" href="#/match/${mid}" onclick="event.stopPropagation()">${esc(screenLabel(scr, d.matches))}</a>` : esc(screenLabel(scr, d.matches))}</div></div>
+      <span class="chev">${I.chev}</span></div>`;
+  }
+  function onlineCard(d, compact) {
+    const names = d.now.map(p => `<span class="chip" style="cursor:pointer" onclick="go('#/user/${p.id}')"><i class="adm-dot inline"></i>${esc(p.display_name)}</span>`).join('');
+    return `<div class="card adm-online" id="admOnline"><div class="row"><div class="grow"><b>🟢 Online now</b><div class="small muted">Using the app in the last ${d.window} seconds · refreshes by itself · ${esc(d.generated)}</div></div>
+        <div style="text-align:right"><b class="adm-big">${num(d.total)}</b></div></div>
+      <div class="adm-grid" style="margin:10px 0 4px">${tile(d.members, 'Signed-in players')}${tile(d.guests, 'Guests (not signed in)')}</div>
+      ${d.now.length ? `<div class="adm-people">${names}</div>` : '<div class="small muted">No signed-in players right now.</div>'}
+      ${compact ? `<a class="small link" href="javascript:Admin.tab('online')">See where they are →</a>` : ''}</div>`;
+  }
+  async function online(data) {
+    const d = data || await api('admin_online');
+    mount(frame(`${onlineCard(d, false)}
+      ${Object.keys(d.screens).length ? `<div class="card"><b>Where people are</b>${hbars(Object.fromEntries(Object.entries(d.screens).map(([k, v]) => [SCREENS[k] || k, v])))}</div>` : ''}
+      <div class="section"><h2>Online now · ${num(d.members)}</h2></div>
+      ${d.now.length ? `<div class="card flush list">${d.now.map(p => personItem(p, d, true)).join('')}</div>` : '<div class="card empty"><div class="big">🟢</div>No signed-in players are using the app right now.</div>'}
+      ${d.recent.length ? `<div class="section"><h2>Earlier, in the last 15 minutes · ${num(d.recent.length)}</h2></div><div class="card flush list">${d.recent.map(p => personItem(p, d, false)).join('')}</div>` : ''}
+      <p class="small muted" style="text-align:center">Every open app checks in about once every 45 seconds. Guests are counted but never named.</p>`, 'Who is online'), 'more', { keepScroll: !!data });
+    startOnlineRefresh('online');
+  }
+  function startOnlineRefresh(which) {
+    if (onlineTimer) clearInterval(onlineTimer);
+    onlineTimer = setInterval(async () => {
+      if (location.hash !== '#/admin' || tab !== which || document.hidden) { if (location.hash !== '#/admin') { clearInterval(onlineTimer); onlineTimer = null; } return; }
+      const d = await api('admin_online').catch(() => null); if (!d || tab !== which) return;
+      if (which === 'online') online(d);
+      else { const box = $('#admOnline'); if (box) box.outerHTML = onlineCard(d, true); }
+    }, 15000);
+    S.timers.push(onlineTimer);
   }
 
   /* ---------- Players: name, username, id and search ---------- */

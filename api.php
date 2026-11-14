@@ -9,7 +9,7 @@ $in = json_decode(file_get_contents('php://input') ?: '[]', true) ?: [];
 
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST' || ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'CricScorer') fail('Bad request', 400);
-    $public = ['login', 'register', 'me', 'match_get', 'google_login', 'client_error', 'wa_request', 'wa_verify_code'];
+    $public = ['login', 'register', 'me', 'match_get', 'google_login', 'client_error', 'wa_request', 'wa_verify_code', 'presence'];
     ensure_schema();
     $u = current_user();
     if (!in_array($action, $public, true) && !$u) fail('Please log in', 401);
@@ -37,6 +37,9 @@ function handle(string $action, array $in, ?array $u) {
     /* ===== Auth ===== */
     case 'me':
         return ['user' => $u ? public_user($u) : null, 'version' => APP_VERSION, 'auth' => auth_public_config()] + ($u ? client_extras($u) : ['force_version' => setting('force_version')]);
+
+    case 'presence':                                // v1.39: heartbeat for Admin → Online (guests are counted, not named)
+        return online_ping($u, (string)($in['screen'] ?? ''));
 
     case 'client_error': {                          // a crash on a phone, so the admin can see it in Error reports
         start_session();

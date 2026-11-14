@@ -1,5 +1,5 @@
 /* Cric-Scorer service worker - caches the app shell so it opens instantly like an app */
-const CACHE = 'cric-scorer-v1.38.0';
+const CACHE = 'cric-scorer-v1.39.0';
 const SHELL = ['./manifest.json',
   './assets/icons/icon-192.png', './assets/icons/icon-512.png', './assets/icons/icon-180.png'];
 

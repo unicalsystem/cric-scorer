@@ -38,7 +38,7 @@ defined('CONTACT_EMAIL')      || define('CONTACT_EMAIL', 'privacy@cricscorerapp.
 defined('ORG_NAME')           || define('ORG_NAME', 'Unical Systems Private Limited');
 defined('ORG_ADDRESS')        || define('ORG_ADDRESS', '206, 3rd Floor, DSL Abacus IT Park, IDA Uppal, Hyderabad, Telangana 500039, India');
 defined('GRIEVANCE_OFFICER')  || define('GRIEVANCE_OFFICER', 'Shiva Kaluvakota');
-defined('POLICY_UPDATED')     || define('POLICY_UPDATED', '24 October 2026');
+defined('POLICY_UPDATED')     || define('POLICY_UPDATED', '14 November 2026');
 
 // Set to true only while troubleshooting - shows database error details.
 defined('DEBUG')       || define('DEBUG', false);
