@@ -209,6 +209,7 @@ function admin_action(string $action, array $u, array $in) {
     switch ($action) {
     case 'admin_stats': return admin_stats();
     case 'admin_online': return admin_online();          // v1.39
+    case 'admin_setup_list': return admin_setup_list($in);            // v1.43
     case 'admin_features': return ['features' => admin_features()];
     case 'admin_feature_set': return admin_feature_action($in);
 

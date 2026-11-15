@@ -114,6 +114,9 @@ Made for Aarush & Aayush.
   add or delete balls; replace a wrongly picked player for the whole match. Totals, target, result, Player of the Match,
   points table and stats are rebuilt after every save. Every save keeps a copy first (`fix_snapshots` table), so there
   is Undo, History and "Restore the match as originally scored". Code: `fix.php`, `inc/fix.php`, `assets/fix.js|css`.
+- **Pre-match setup** - a scheduled match opens a "Get the match ready" screen: scorer, playing teams and toss can be saved in any
+  order, days ahead (toss before teams is fine; changing teams keeps the toss). Admin → 📋 Match setup lists unstarted matches
+  and what each still needs. Code: `inc/setup.php`, `setupHub` in `assets/app.js`.
 
 ## Releasing a new version
 1. Change the code, bump `APP_VERSION` in `inc/version.php` and the cache name in `sw.js`.

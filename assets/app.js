@@ -678,7 +678,7 @@ App.createMatch = e => {
 async function viewMatch(id) {
   id = +id;
   if (!S.m || S.m.match.id !== id) {
-    S.mTab = 'card'; S.cardInn = null; S.squads = null; S.toss = {}; S.op = {}; S.bnc = false; S.mViewers = 0;
+    S.mTab = 'card'; S.cardInn = null; S.squads = null; S.toss = {}; S.op = {}; S.bnc = false; S.mViewers = 0; S.setupView = 'auto';
     mount(topbar('Match', { back: true }) + `<div class="content">${sk(3)}</div>`, S.user ? 'matches' : null);
   }
   S.m = await api('match_get', { id });
@@ -730,8 +730,10 @@ function drawMatch(first) {
 
   if (st.needs === 'completed') html += resultCard(st);
   else if (st.can_edit) {
-    if (st.needs === 'players') html += xiSetup();
-    else if (st.needs === 'toss') html += tossSetup();
+    const sv = setupScreen(st);
+    if (sv === 'xi') html += xiSetup();
+    else if (sv === 'toss') html += tossSetup();
+    else if (sv === 'hub') html += setupHub();
     else if (st.needs === 'openers') html += openersSetup();
     else html += `<div style="padding:0 0 0">${creasePanel(st, inn)}</div><div class="content" style="padding-top:0">${scorePad()}</div>`;
   } else {
@@ -1257,6 +1259,29 @@ App.shareMatch = async () => {
   else { try { await navigator.clipboard.writeText(text + '\n' + url); toast('Link copied!'); } catch (e) { toast(url); } }
 };
 
+/* ----- v1.43: get the match ready - scorer, playing teams and toss in any order, any time before the match ----- */
+function setupScreen(st) {
+  if (S.setupMid !== st.match.id) { S.setupMid = st.match.id; S.setupView = 'auto'; }
+  if (!(st.needs === 'setup' || (st.needs === 'openers' && !st.innings.length))) return null;
+  if (['xi', 'toss', 'hub'].includes(S.setupView)) return S.setupView;
+  return st.needs === 'setup' ? 'hub' : null;
+}
+function setupHub() {
+  const st = S.m, m = st.match, su = st.setup || {};
+  const row = (ok, title, val, btn) => `<div class="card setup-row"><span class="setup-chk ${ok ? 'ok' : ''}">${ok ? '✓' : ''}</span><div class="grow"><b>${title}</b><div class="small muted">${val}</div></div>${btn}</div>`;
+  const n = t => (su.teams && su.teams[t.id]) || 0;
+  const scorerTxt = m.scorer ? `${esc(m.scorer.display_name)} (@${esc(m.scorer.username)})` : 'Only the match owner / admin (nobody else named)';
+  return `<div class="content"><div class="section" style="margin-top:6px"><h2>Get the match ready</h2></div>
+    <div class="small muted" style="margin:-4px 2px 12px">Do these in any order and save each one - even days before the match. The scorer only has to pick the openers and play.</div>
+    ${st.is_owner ? row(!!m.scorer, '✍️ Scorer', scorerTxt, `<button class="btn sm light" onclick="App.scorerSheet()">${m.scorer ? 'Change' : 'Choose'}</button>`) : ''}
+    ${row(!!su.teams_done, '🧢 Playing teams', su.teams_done ? `${esc(st.team1.short_name)} ${n(st.team1)} · ${esc(st.team2.short_name)} ${n(st.team2)} players picked` : `${esc(st.team1.short_name)} ${n(st.team1)} · ${esc(st.team2.short_name)} ${n(st.team2)} - not picked yet`, `<button class="btn sm ${su.teams_done ? 'light' : ''}" onclick="App.openXI()">${su.teams_done ? 'Change' : 'Pick'}</button>`)}
+    ${row(!!m.toss_winner_id, '🪙 Toss', m.toss_winner_id ? `${esc(teamById(m.toss_winner_id).name)} won the toss and chose to ${m.toss_decision === 'bat' ? 'bat' : 'bowl'} first` : 'Not done yet - can be done before the teams are picked', `<button class="btn sm ${m.toss_winner_id ? 'light' : ''}" onclick="App.openToss()">${m.toss_winner_id ? 'Change' : 'Do toss'}</button>`)}
+    ${st.needs === 'openers' ? '<button class="btn block" style="margin-top:6px" onclick="App.setupDone()">Teams & toss are ready - continue to openers →</button>' : '<div class="notice">When the playing teams and the toss are both saved, the openers screen appears and the match can start.</div>'}</div>`;
+}
+App.openXI = () => { S.setupView = 'xi'; S.squads = null; drawMatch(false); };
+App.openToss = () => { const m = S.m.match; S.toss = { w: m.toss_winner_id || null, d: m.toss_decision || null }; S.setupView = 'toss'; drawMatch(false); };
+App.setupBack = () => { S.setupView = 'hub'; drawMatch(false); };
+App.setupDone = () => { S.setupView = 'auto'; drawMatch(false); };
 /* ----- setup: playing XI ----- */
 function xiSetup() {
   const st = S.m, m = st.match;
@@ -1270,7 +1295,8 @@ function xiSetup() {
     <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn sm light" onclick="App.xiFirst()">Pick first ${m.players_per_side}</button><button class="btn sm light" onclick="App.xiClear()">Clear</button>
     ${team.team.can_edit ? '<button class="btn sm light" onclick="App.quickPlayer()">+ New player</button>' : ''}</div>
     ${team.players.length ? `<div class="plist">${list}</div>` : `<div class="card empty"><div class="big">🧢</div>This team has no players yet.${team.team.can_edit ? '<br>Tap <b>+ New player</b> to add some.' : ''}</div>`}
-    <button class="btn block" style="margin:8px 0 20px" onclick="App.saveXI(this)">Save teams & go to toss →</button></div>`;
+    <button class="btn block" style="margin:8px 0 8px" onclick="App.saveXI(this)">Save playing teams</button>
+    <button class="btn light block" style="margin:0 0 20px" onclick="App.setupBack()">← Back</button></div>`;
 }
 async function loadSquads() {
   const st = S.m;
@@ -1318,7 +1344,7 @@ App.saveXI = btn => {
   const st = S.m, min = st.match.last_man_stands ? 1 : 2;
   for (const t of [st.team1, st.team2]) if (S.xiSel[t.id].size < min) { S.xiTeam = t.id; drawMatch(false); return toast(`Pick at least ${min} players for ${t.name}`, true); }
   const xi = { [st.team1.id]: [...S.xiSel[st.team1.id]], [st.team2.id]: [...S.xiSel[st.team2.id]] };
-  run(() => scoreAction('match_xi', { xi }), btn);
+  run(async () => { if (await scoreAction('match_xi', { xi })) { S.setupView = 'auto'; drawMatch(false); toast('Playing teams saved ✓'); } }, btn);
 };
 App.quickPlayer = () => {
   sheet(`<h3>New player</h3><div class="sub">Added to ${esc(S.squads[S.xiTeam].team.name)}</div>
@@ -1348,8 +1374,8 @@ function tossSetup() {
     <div class="field"><label>They chose to</label><div class="toss-pick">
       <button class="${t.d === 'bat' ? 'on' : ''}" onclick="S.toss.d='bat';drawMatch(false)"><span style="font-size:30px">🏏</span>Bat first</button>
       <button class="${t.d === 'bowl' ? 'on' : ''}" onclick="S.toss.d='bowl';drawMatch(false)"><span style="font-size:30px">🎯</span>Bowl first</button></div></div>
-    <button class="btn block" onclick="App.saveToss(this)">Continue →</button>
-    <button class="btn light block" style="margin-top:8px" onclick="App.editXI()">← Change playing teams</button></div></div>`;
+    <button class="btn block" onclick="App.saveToss(this)">Save toss</button>
+    <button class="btn light block" style="margin-top:8px" onclick="App.setupBack()">← Back</button></div></div>`;
 }
 App.flip = () => {
   const c = $('#coin'); if (!c) return;
@@ -1359,9 +1385,9 @@ App.flip = () => {
 App.saveToss = btn => {
   if (!S.toss.w) return toast('Who won the toss?', true);
   if (!S.toss.d) return toast('Bat or bowl first?', true);
-  run(() => scoreAction('match_toss', { winner_id: S.toss.w, decision: S.toss.d }), btn);
+  run(async () => { if (await scoreAction('match_toss', { winner_id: S.toss.w, decision: S.toss.d })) { S.setupView = 'auto'; drawMatch(false); toast('Toss saved ✓'); } }, btn);
 };
-App.editXI = () => { S.m.needs = 'players'; S.squads = null; S.toss = {}; drawMatch(false); };
+App.editXI = () => App.openXI();
 
 /* ----- setup: openers ----- */
 function openersSetup() {
@@ -1401,7 +1427,7 @@ function openersSetup() {
     <div class="row" style="margin:10px 0">${badge(bwt, 'sm')}<b class="grow">${esc(bwt.name)} - opening bowler</b></div>
     <div class="chips wrap" style="margin-bottom:14px">${chips(bowl, 'b')}</div>
     <button class="btn block" onclick="App.startInnings(this)">Play ball! 🏏</button>
-    ${nx.no >= 2 ? '<button class="btn light block" style="margin-top:8px" onclick="App.undo()">↶ Undo last ball of previous innings</button>' : '<button class="btn light block" style="margin-top:8px" onclick="App.undoToss()">← Redo the toss</button>'}
+    ${nx.no >= 2 ? '<button class="btn light block" style="margin-top:8px" onclick="App.undo()">↶ Undo last ball of previous innings</button>' : '<button class="btn light block" style="margin-top:8px" onclick="App.setupBack()">⚙️ Change teams, toss or scorer</button>'}
   </div></div>`;
 }
 App.startInnings = btn => {
@@ -1409,7 +1435,7 @@ App.startInnings = btn => {
   if (!o.s || (!single && !o.ns) || !o.b) return toast('Pick both batters and the bowler', true);
   run(() => scoreAction('match_start_innings', { striker_id: o.s, non_striker_id: single ? null : o.ns, bowler_id: o.b, follow_on: o.fo ? 1 : 0 }), btn);
 };
-App.undoToss = () => { S.m.needs = 'toss'; S.toss = {}; drawMatch(false); };
+App.undoToss = () => App.openToss();
 
 /* ----- result ----- */
 function resultCard(st) {

@@ -70,8 +70,7 @@ function set_playing_xi(array $m, array $in): void {
     $max = xi_max($m);                           // v1.41: more than the playing number when extra players are allowed
     $min = $m['last_man_stands'] ? 1 : 2;
     q('DELETE FROM match_players WHERE match_id=?', [$m['id']]);
-    q('UPDATE matches SET toss_winner_id=NULL, toss_decision=NULL WHERE id=?', [$m['id']]);
-    foreach ([(int)$m['team1_id'], (int)$m['team2_id']] as $tid) {
+    foreach ([(int)$m['team1_id'], (int)$m['team2_id']] as $tid) {          // v1.43: the toss is independent of the playing teams and is kept
         $ids = array_values(array_unique(array_map('intval', (array)($in['xi'][$tid] ?? $in['xi'][(string)$tid] ?? []))));
         if (count($ids) < $min) fail("Select at least $min player(s) for each team");
         if (count($ids) > $max) fail(extras_on($m) ? "Select at most $max players per team" : "Select at most $max players per team (the tournament owner or admin can tick \"Allow extra players\")");
@@ -97,6 +96,7 @@ function set_toss(array $m, array $in): void {
 
 function start_innings(array $m, array $in): void {
     if (!$m['toss_winner_id']) fail('Do the toss first');
+    if (count(xi_ids((int)$m['id'], (int)$m['team1_id'])) < 1 || count(xi_ids((int)$m['id'], (int)$m['team2_id'])) < 1) fail('Pick the playing teams first');
     $last = latest_innings((int)$m['id']);
     if ($last && $last['status'] === 'live') fail('Innings already in progress');
     $test = is_test($m); $super = 0; $followOn = false;
@@ -660,8 +660,7 @@ function match_state(int $matchId, ?array $u): array {
     $last = $inns ? end($inns) : null;
     $needs = null; $avail = []; $prevBowler = null; $bowlerBalls = [];
     if (in_array($m['status'], ['completed', 'abandoned'], true)) $needs = 'completed';
-    elseif (!$xi[(int)$m['team1_id']] || !$xi[(int)$m['team2_id']]) $needs = 'players';
-    elseif (!$m['toss_winner_id']) $needs = 'toss';
+    elseif (!$xi[(int)$m['team1_id']] || !$xi[(int)$m['team2_id']] || !$m['toss_winner_id']) $needs = 'setup';   // v1.43: teams, toss and scorer can be saved in any order, any time before the start
     elseif (!$last) $needs = 'openers';
     elseif ($last['status'] === 'completed') $needs = ($last['no'] === 1 || (!empty($m['super_over']) && $last['no'] < 4) || (is_test($m) && $m['status'] !== 'completed' && $last['no'] < 4)) ? 'openers' : 'completed';
     else {
@@ -733,6 +732,8 @@ function match_state(int $matchId, ?array $u): array {
         'team1' => $t1, 'team2' => $t2, 'xi' => $xi, 'innings' => $inns,
         'needs' => $needs, 'available_batters' => $avail, 'prev_over_bowler' => $prevBowler, 'bowler_balls' => $bowlerBalls,
         'next' => $next,
+        'setup' => in_array($m['status'], ['scheduled'], true) && !$last ? ['teams' => [(int)$m['team1_id'] => count($xi[(int)$m['team1_id']]), (int)$m['team2_id'] => count($xi[(int)$m['team2_id']])],
+            'teams_done' => $xi[(int)$m['team1_id']] && $xi[(int)$m['team2_id']], 'toss_done' => (bool)$m['toss_winner_id'], 'scorer_set' => !empty($m['scorer_id'])] : null,
         'dls' => $inns && !is_test($m) ? dls_info($m) : null,
         'notes' => $inns ? match_notes($m, rows('SELECT * FROM innings WHERE match_id=? ORDER BY innings_no', [$matchId]), $names) : ['notes' => [], 'timings' => []],
         'log' => array_map(fn($r) => ['who' => $r['who'], 'text' => $r['text'], 'score' => $r['score'], 'at' => $r['created_at']], rows('SELECT * FROM match_log WHERE match_id=? ORDER BY id', [$matchId])),

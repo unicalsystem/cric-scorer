@@ -678,3 +678,8 @@ body:not(.app-mode) #app{min-height:0;padding:0;box-shadow:none}
 .vw-pill{position:fixed;top:calc(var(--safe-t, 0px) + 64px);right:12px;z-index:30;display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px;pointer-events:none}
 .vw-pill i{width:8px;height:8px;border-radius:50%;background:#ff3b3b;box-shadow:0 0 0 0 rgba(255,59,59,.7);animation:vwpulse 1.6s infinite}
 @keyframes vwpulse{0%{box-shadow:0 0 0 0 rgba(255,59,59,.7)}70%{box-shadow:0 0 0 8px rgba(255,59,59,0)}100%{box-shadow:0 0 0 0 rgba(255,59,59,0)}}
+
+/* v1.43: get-the-match-ready screen */
+.setup-row{display:flex;align-items:center;gap:12px;padding:13px 14px;margin-bottom:10px}
+.setup-chk{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-weight:900;color:#fff}
+.setup-chk.ok{background:var(--green);border-color:var(--green)}

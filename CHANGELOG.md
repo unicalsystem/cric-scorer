@@ -4,6 +4,12 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.43.0 - 15 November 2026
+- **Get a match ready ahead of time.** A scheduled match now opens a "Get the match ready" screen with three independent steps - scorer, playing teams, toss - that can be done in any order, even days before the match, and each is saved at once.
+- **Toss before teams** is now allowed, and picking or changing the playing teams no longer wipes the toss. Once teams and toss are both saved the scorer lands straight on the openers screen. Starting a match without playing teams is blocked.
+- **Admin → 📋 Match setup**: lists every match that has not started, with search and tournament filter, shows what is still missing (scorer / teams / toss), lets the admin name the scorer by username, and opens the match setup. "Ready" = teams + toss saved.
+- The openers screen has "⚙️ Change teams, toss or scorer" in place of "Redo the toss".
+
 ## 1.42.0 - 15 November 2026
 - **Match correction desk** (administrator only, made for a laptop): Admin → 🛠 Fix a match → Open the correction desk, or ⋯ on a finished match → "Correct balls, batters & bowlers". It opens full screen at `/fix.php`
 - **Pick the match → the innings → the over → the ball**, then correct the striker, non-striker, bowler, runs, extra (wide / no-ball / bye / leg bye), wicket, who is out and the fielder of any ball of a finished match. Change several balls and save them together

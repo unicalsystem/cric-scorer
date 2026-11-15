@@ -2,7 +2,7 @@
 'use strict';
 const Admin = (() => {
   const A = {};
-  const TABS = [['stats', '📊 Stats'], ['online', '🟢 Online'], ['users', '👥 Players'], ['roster', '🧢 Team players'], ['fix', '🛠 Fix a match'], ['imports', '📥 Imports'], ['features', '🚦 Roll-out'], ['update', '⬆️ Updates'], ['help', '💬 Help desk'], ['news', '📣 News'], ['errors', '🐞 Errors']];
+  const TABS = [['stats', '📊 Stats'], ['online', '🟢 Online'], ['users', '👥 Players'], ['roster', '🧢 Team players'], ['setup', '📋 Match setup'], ['fix', '🛠 Fix a match'], ['imports', '📥 Imports'], ['features', '🚦 Roll-out'], ['update', '⬆️ Updates'], ['help', '💬 Help desk'], ['news', '📣 News'], ['errors', '🐞 Errors']];
   let userQ = '', userPage = 0;
   let tab = 'stats', helpStatus = 'open', onlineTimer = null;
   const num = n => Number(n || 0).toLocaleString('en-IN');
@@ -17,7 +17,7 @@ const Admin = (() => {
     if (!S.user || !S.user.is_admin) { mount(topbar('Admin', { back: true }) + '<div class="content"><div class="empty">Only the administrator can open this page.</div></div>', 'more'); return; }
     if (onlineTimer) { clearInterval(onlineTimer); onlineTimer = null; }
     mount(frame(sk(4)), 'more');
-    const fn = { stats, online, users, roster, fix, imports, features, update, help, news, errors }[tab];
+    const fn = { stats, online, users, roster, setup, fix, imports, features, update, help, news, errors }[tab];
     await fn();
   };
 
@@ -275,6 +275,29 @@ const Admin = (() => {
   };
   A.playerSave = (e, id) => { e.preventDefault(); run(async () => { const f = formData(e.target); const d = await api('admin_player_save', { id, ...f, _q: rosterQ, _team: rosterTeam }); closeSheet(); toast('Saved ✓'); roster(d); }, e.submitter); };
   A.playerDelete = id => confirmSheet('Delete this player?', 'They are removed from the team. Players who have played matches cannot be deleted.', 'Delete', () => run(async () => { await api('admin_player_delete', { id }); closeSheet(); toast('Deleted'); roster(); }));
+
+  /* ---------- v1.43: Match setup - get matches ready before the day (scorer, playing teams, toss) ---------- */
+  let setupQ = '', setupTour = 0;
+  async function setup(data) {
+    const d = data || await api('admin_setup_list', { q: setupQ, tournament_id: setupTour });
+    const ready = d.matches.filter(m => m.ready).length;
+    const chip = (ok, label) => `<span class="role-tag" style="${ok ? 'background:var(--green-soft);color:var(--green)' : 'background:var(--red-soft);color:var(--red)'}">${ok ? '✓' : '✗'} ${label}</span>`;
+    mount(frame(`<p class="small muted">Matches that have not started. Get each one ready ahead of time - name the <b>scorer</b> here, and tap <b>Open setup</b> to pick the <b>playing teams</b> and do the <b>toss</b> (any order, saved at once). A match is <b>Ready</b> when teams and toss are saved; the scorer then only picks the openers.</p>
+      <form class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap" onsubmit="event.preventDefault();Admin.setupFind(this)">
+        <input class="input grow" name="q" placeholder="Team, tournament or match no." value="${esc(setupQ)}" style="min-width:160px">
+        <select class="input" name="t" style="width:auto"><option value="0">All tournaments</option>${d.tournaments.map(t => `<option value="${t.id}" ${+t.id === setupTour ? 'selected' : ''}>${esc(t.name)} (${t.n})</option>`).join('')}<option value="-1" ${setupTour === -1 ? 'selected' : ''}>Outside a tournament</option></select>
+        <button class="btn sm">Search</button></form>
+      <div class="small" style="margin:0 2px 8px"><b>${ready}</b> of <b>${d.matches.length}</b> ready</div>
+      ${d.matches.length ? d.matches.map(m => `<div class="card"><div class="row"><div class="grow"><b>${esc(m.t1)} <span class="muted">v</span> ${esc(m.t2)}</b>
+          <div class="small muted">#${m.id} · ${esc(m.tournament || 'Friendly')}${m.round ? ' · ' + esc(m.round) : ''}${m.date ? ' · ' + esc(fmtDate(m.date)) : ''}${m.venue ? ' · ' + esc(m.venue) : ''} · ${m.overs} ov · ${m.pps} a side</div></div>
+          ${m.ready ? '<span class="role-tag" style="background:var(--green);color:#fff">Ready</span>' : ''}</div>
+        <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${chip(!!m.scorer, 'Scorer: ' + (m.scorer ? esc(m.scorer.name) : 'not named'))}${chip(m.teams_done, `Teams ${m.n1} · ${m.n2}`)}${chip(!!m.toss, 'Toss' + (m.toss ? ': ' + esc(m.toss) : ''))}</div>
+        <form class="row" style="gap:6px" onsubmit="event.preventDefault();Admin.setupScorer(this,${m.id})"><input class="input grow" name="u" placeholder="Scorer's username (empty = take back)" value="${m.scorer ? esc(m.scorer.username) : ''}" autocapitalize="none" autocomplete="off"><button class="btn sm light">${m.scorer ? 'Change' : 'Set scorer'}</button>
+          <button type="button" class="btn sm" onclick="go('#/match/${m.id}')">Open setup ›</button></form></div>`).join('')
+        : '<div class="card empty"><div class="big">📋</div>No matches waiting to start.</div>'}`, 'Match setup'), 'more');
+  }
+  A.setupFind = f => { setupQ = f.q.value.trim(); setupTour = +f.t.value; setup(); };
+  A.setupScorer = (f, id) => run(async () => { const r = await api('match_scorer', { id, username: f.u.value.trim() }); toast(r.scorer ? `${r.scorer.display_name} will score this match ✓` : 'Scorer taken back'); setup(); }, f.querySelector('.btn'));
 
   /* ---------- v1.42: Match correction desk (a separate full-screen page, made for a laptop) ---------- */
   async function fix() {

@@ -707,7 +707,8 @@ xiSetup = () => {
     ${team.team.can_edit ? '<button class="btn sm light" onclick="App.quickPlayer()">+ New player</button>' : ''}</div>
     <div class="small muted" style="margin:-4px 0 8px">Tap <b>C</b> for the captain and <b>WK</b> for the keeper - used for captain stats and caught-behind.</div>
     ${team.players.length ? `<div class="plist">${list}</div>` : `<div class="card empty"><div class="big">🧢</div>This team has no players yet.${team.team.can_edit ? '<br>Tap <b>+ New player</b> to add some.' : ''}</div>`}
-    <button class="btn block" style="margin:8px 0 20px" onclick="App.saveXI(this)">Save teams & go to toss →</button></div>`;
+    <button class="btn block" style="margin:8px 0 8px" onclick="App.saveXI(this)">Save playing teams</button>
+    <button class="btn light block" style="margin:0 0 20px" onclick="App.setupBack()">← Back</button></div>`;
 };
 App.xiCap = id => { S.xiCap[S.xiTeam] = S.xiCap[S.xiTeam] === id ? null : id; drawMatch(false); };
 App.xiWk = id => { S.xiWk[S.xiTeam] = S.xiWk[S.xiTeam] === id ? null : id; drawMatch(false); };
@@ -716,7 +717,7 @@ App.saveXI = btn => {
   for (const t of [st.team1, st.team2]) if (S.xiSel[t.id].size < min) { S.xiTeam = t.id; drawMatch(false); return toast(`Pick at least ${min} players for ${t.name}`, true); }
   const xi = { [st.team1.id]: [...S.xiSel[st.team1.id]], [st.team2.id]: [...S.xiSel[st.team2.id]] };
   const pick = o => ({ [st.team1.id]: (o || {})[st.team1.id] || 0, [st.team2.id]: (o || {})[st.team2.id] || 0 });
-  run(() => scoreAction('match_xi', { xi, captain: pick(S.xiCap), keeper: pick(S.xiWk) }), btn);
+  run(async () => { if (await scoreAction('match_xi', { xi, captain: pick(S.xiCap), keeper: pick(S.xiWk) })) { S.setupView = 'auto'; drawMatch(false); toast('Playing teams saved ✓'); } }, btn);
 };
 
 /* ---------- new match: ball type & round; details sheet: ball, round, bonus ---------- */

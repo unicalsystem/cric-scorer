@@ -54,7 +54,6 @@ function set_match_extras(array $m, ?array $u, bool $on): void {
         foreach ([(int)$m['team1_id'], (int)$m['team2_id']] as $tid)
             if (count(xi_ids((int)$m['id'], $tid)) > (int)$m['players_per_side']) {
                 q('DELETE FROM match_players WHERE match_id=? AND team_id=? AND bat_order > ?', [$m['id'], $tid, (int)$m['players_per_side']]);
-                q('UPDATE matches SET toss_winner_id=NULL, toss_decision=NULL WHERE id=?', [$m['id']]);
             }
     }
 }
