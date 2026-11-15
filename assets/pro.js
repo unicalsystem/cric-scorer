@@ -267,6 +267,7 @@ App.matchMenu = () => {
     ${m.visibility === 'private' ? '' : `<button class="pbtn" onclick="App.overlayInfo()">📺 Score overlay for streaming</button>`}
     ${st.innings.length ? '<button class="pbtn" onclick="App.downloadCard()">🖼️ Download scorecard image</button>' : ''}
     ${S.user && S.user.is_admin && ['completed', 'abandoned'].includes(st.match.status) ? `<a class="pbtn" href="fix.php?m=${st.match.id}" target="_blank" rel="noopener">🛠 Correct balls, batters &amp; bowlers (admin desk)</a>` : ''}
+    ${S.user && S.user.is_admin && st.innings.length ? '<button class="pbtn" onclick="App.pdfSheet()">📄 Full scorecard PDF <span class="s">every ball · share with teams</span></button>' : ''}
     ${st.is_owner ? '<button class="pbtn" style="color:var(--red)" onclick="App.deleteMatch()">🗑️ Delete match</button>' : ''}</div>`);
 };
 App.overlayInfo = () => {

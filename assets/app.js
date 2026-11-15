@@ -1134,6 +1134,7 @@ App.matchMenu = () => {
       : '<button class="pbtn" onclick="App.setVis(\'private\')">🔒 Make match private <span class="s">only you can see it</span></button>') : ''}
     ${m.visibility === 'private' ? '' : '<button class="pbtn" onclick="App.shareMatch()">🔗 Share live score link</button>'}
     ${S.user && S.user.is_admin && ['completed', 'abandoned'].includes(st.match.status) ? `<a class="pbtn" href="fix.php?m=${st.match.id}" target="_blank" rel="noopener">🛠 Correct balls, batters &amp; bowlers (admin desk)</a>` : ''}
+    ${S.user && S.user.is_admin && st.innings.length ? '<button class="pbtn" onclick="App.pdfSheet()">📄 Full scorecard PDF <span class="s">every ball · share with teams</span></button>' : ''}
     ${st.is_owner ? '<button class="pbtn" style="color:var(--red)" onclick="App.deleteMatch()">🗑️ Delete match</button>' : ''}</div>`);
 };
 /* ----- Who scores this match ----- */
@@ -1280,6 +1281,16 @@ function setupHub() {
 }
 App.openXI = () => { S.setupView = 'xi'; S.squads = null; drawMatch(false); };
 App.openToss = () => { const m = S.m.match; S.toss = { w: m.toss_winner_id || null, d: m.toss_decision || null }; S.setupView = 'toss'; drawMatch(false); };
+App.pdfSheet = () => run(async () => {
+  const id = S.m.match.id, r = await api('admin_pdf_link', { id });
+  const url = new URL('pdf.php?id=' + id + '&k=' + r.k, location.href).href; S.pdfUrl = url;
+  sheet(`<h3>📄 Full scorecard PDF</h3><div class="sub">Every ball, every run, every over - plus batting, bowling, extras, fall of wickets and partnerships. Made fresh each time.</div>
+    <a class="btn block" href="${url}&dl=1" style="margin-top:12px">⬇ Download PDF</a>
+    <a class="btn light block" href="${url}" target="_blank" rel="noopener" style="margin-top:8px">Open</a>
+    <button class="btn light block" style="margin-top:8px" onclick="App.pdfCopy()">🔗 Copy link for teams</button>
+    <div class="small muted" style="margin-top:10px">Anyone with the link can see this match's PDF without logging in. Names in non-English scripts show as ? in the PDF.</div>`);
+});
+App.pdfCopy = async () => { const text = '🏏 Full scorecard - ' + S.m.team1.name + ' vs ' + S.m.team2.name; if (navigator.share) { try { await navigator.share({ title: 'Cric-Scorer scorecard', text, url: S.pdfUrl }); return; } catch (e) { return; } } try { await navigator.clipboard.writeText(text + '\n' + S.pdfUrl); toast('Link copied ✓'); } catch (e) { toast(S.pdfUrl); } };
 App.setupBack = () => { S.setupView = 'hub'; drawMatch(false); };
 App.setupDone = () => { S.setupView = 'auto'; drawMatch(false); };
 /* ----- setup: playing XI ----- */

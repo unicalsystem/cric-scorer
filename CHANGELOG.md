@@ -4,6 +4,11 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.44.0 - 15 November 2026
+- **Full scorecard PDF** (administrator): every ball, every run and every over on a printable A4 sheet - result, toss, Player of the Match, batting and bowling tables, extras, fall of wickets, partnerships, an over-by-over summary and the complete ball-by-ball log with the running score. Find it under ⋯ on any started match ("📄 Full scorecard PDF") and on the correction desk ("📄 PDF scorecard").
+- **Share with teams for review**: "Copy link for teams" gives a link to that one match's PDF that works without a login. The PDF is made fresh each time, so it shows the latest corrections.
+- Names in non-English scripts (Telugu, Hindi ...) print as ? in the PDF - a limit of the built-in PDF font.
+
 ## 1.43.0 - 15 November 2026
 - **Get a match ready ahead of time.** A scheduled match now opens a "Get the match ready" screen with three independent steps - scorer, playing teams, toss - that can be done in any order, even days before the match, and each is saved at once.
 - **Toss before teams** is now allowed, and picking or changing the playing teams no longer wipes the toss. Once teams and toss are both saved the scorer lands straight on the openers screen. Starting a match without playing teams is blocked.

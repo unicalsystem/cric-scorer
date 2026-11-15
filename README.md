@@ -117,6 +117,8 @@ Made for Aarush & Aayush.
 - **Pre-match setup** - a scheduled match opens a "Get the match ready" screen: scorer, playing teams and toss can be saved in any
   order, days ahead (toss before teams is fine; changing teams keeps the toss). Admin → 📋 Match setup lists unstarted matches
   and what each still needs. Code: `inc/setup.php`, `setupHub` in `assets/app.js`.
+- **Full scorecard PDF** (`/pdf.php?id=N`, admin session or the signed link `k`) - every ball, over and run on A4, built by a small pure-PHP
+  writer in `inc/pdf.php` (no libraries). Admin: ⋯ match menu or the correction desk → Download / Copy link for teams.
 
 ## Releasing a new version
 1. Change the code, bump `APP_VERSION` in `inc/version.php` and the cache name in `sw.js`.
@@ -185,6 +187,7 @@ config.php       database config  inc/          scoring engine  assets/       ap
 privacy.php      /privacy         terms.php     /terms          learn.php     /learn pages
 match.php        /m/ID share page sitemap.php   /sitemap.xml    robots.php    /robots.txt
 fix.php          admin match correction desk (laptop)
+pdf.php          full scorecard PDF (admin or signed link)
 manifest.json    PWA manifest     sw.js         offline cache   sql/          schema + seed data
 ```
 

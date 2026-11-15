@@ -21,6 +21,7 @@ require_once __DIR__ . '/online.php';
 require_once __DIR__ . '/extras.php';
 require_once __DIR__ . '/fix.php';
 require_once __DIR__ . '/setup.php';
+require_once __DIR__ . '/pdf.php';
 require_once __DIR__ . '/academies.php';
 require_once __DIR__ . '/community.php';
 require_once __DIR__ . '/auction.php';

@@ -137,6 +137,7 @@
         <div class="sub">Match #${m.id} · ${esc(m.tournament || 'Friendly')}${m.round ? ' · ' + esc(m.round) : ''}${m.title ? ' · ' + esc(m.title) : ''} · ${esc(fmtDate(m.date))} · ${m.test ? 'Test' : m.overs + ' overs'} · ${m.players_per_side} a side${m.extra_players ? ' + subs' : ''}</div></div>
       <div class="actions"><button class="btn light" data-act="undo" ${d.history.length ? '' : 'disabled'}>↩ Undo last saved change</button>
         <button class="btn light" data-act="history" ${d.history.length ? '' : 'disabled'}>🕘 History${d.history.length ? ' (' + d.history.length + ')' : ''}</button>
+        <button class="btn light" data-act="pdf">📄 PDF scorecard</button>
         <a class="btn light" href="m/${m.id}" target="_blank" rel="noopener">Scorecard ↗</a></div></div>
       <div class="result"><span>${esc(m.result || (m.status === 'abandoned' ? 'Match abandoned' : 'No result yet'))}</span>${m.pom ? `<span class="pom">Player of the Match: ${esc(m.pom)}</span>` : ''}</div>`;
 
@@ -334,6 +335,15 @@
       case 'save': run(save); break;
       case 'undo': guard(() => confirmBox('Undo the last saved change?', `This puts the match back to how it was before: <b>${esc((F.d.history[0] || {}).note || 'the last change')}</b>.`, 'Undo it', () => { closeModal(); run(async () => { setData(await api('admin_fix_undo', { id: F.d.match.id }), true); toast('Undone ✓'); loadList().catch(() => {}); }); })); break;
       case 'history': historyModal(); break;
+      case 'pdf': run(async () => {
+        const id = F.d.match.id, r = await api('admin_pdf_link', { id });
+        const url = new URL('pdf.php?id=' + id + '&k=' + r.k, location.href).href;
+        modal(`<h3>📄 Full scorecard PDF</h3><p>Every ball, every run and every over, with batting, bowling, extras, fall of wickets and partnerships. It is made fresh each time, so it always shows the latest corrections.</p>
+          <div class="row"><a class="btn" href="${esc(url)}&dl=1">⬇ Download PDF</a><a class="btn light" href="${esc(url)}" target="_blank" rel="noopener">Open</a><button class="btn light" data-act="pdf-copy" data-url="${esc(url)}">🔗 Copy link for teams</button></div>
+          <p class="small" style="margin-top:10px">Anyone with the link can view this one match's PDF - no login. Names written in non-English scripts print as ? in the PDF.</p>
+          <div class="row"><button class="btn light" data-act="modal-close">Close</button></div>`);
+      }); break;
+      case 'pdf-copy': navigator.clipboard.writeText(el.dataset.url).then(() => toast('Link copied - paste it in WhatsApp or email ✓'), () => toast(el.dataset.url)); break;
       case 'restore': {
         const id = +el.dataset.id;
         guard(() => confirmBox(el.dataset.orig ? 'Restore the original scoring?' : 'Go back to before this change?', el.dataset.orig ? 'Every correction made on this desk is taken out and the match is exactly as the scorer left it. You can undo this too.' : 'The match goes back to how it was just before that change. You can undo this too.', 'Yes, go back',
