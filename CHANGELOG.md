@@ -4,6 +4,17 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.42.0 - 15 November 2026
+- **Match correction desk** (administrator only, made for a laptop): Admin → 🛠 Fix a match → Open the correction desk, or ⋯ on a finished match → "Correct balls, batters & bowlers". It opens full screen at `/fix.php`
+- **Pick the match → the innings → the over → the ball**, then correct the striker, non-striker, bowler, runs, extra (wide / no-ball / bye / leg bye), wicket, who is out and the fielder of any ball of a finished match. Change several balls and save them together
+- **Add a ball** that was missed or **delete** one that should not be there; over and ball numbers re-count by themselves
+- Whole-over shortcuts: **set the bowler for every ball** of the over, **swap the strike** on every ball
+- **Wrong player picked?** Replace a player with the one who really played - for one innings or the whole match (batting, bowling, fielding). A squad player who was not on the match list can be chosen; the Playing lists box removes anyone who did not play
+- After every save the innings totals, the target, the **result**, Player of the Match, scorecard, points table and player stats are worked out again (DLS / rain results and super overs too). If the result changes you are told before and after
+- A **"things to check"** list points at likely mistakes: two bowlers in one over, a bowler bowling back-to-back overs or over the limit, a batter batting after being out, too many balls in the innings, a chase that stopped early, too many players on the match list
+- **Nothing is lost**: every save keeps a copy of the match first - ↩ Undo last saved change, 🕘 History (go back to before any change) and **Restore the match as originally scored**. Corrections are noted in the match log
+- Only finished matches can be opened here (a live match is still corrected by its scorer with Undo / Edit ball)
+
 ## 1.41.0 - 14 November 2026
 - **Extra players (subs)**: a match can now have more players a side than the playing number - e.g. 11 or 12 for an 8-a-side game. Everyone picked can field and bowl, but **only the playing number bat**: once that many batters have come in nobody new can bat, so the side is all out at 7 wickets in an 8-a-side game, and "won by N wickets" counts from 8
 - The **tournament owner, club owner or admin** switches it on: tournament → Edit → **Allow extra players** (applies to every match that hasn't started), or for one match with the ➕ switch on **Pick playing teams** (match owner or admin for a match outside a tournament). Others see a note. Switching it off trims each side back to the playing number

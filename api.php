@@ -774,6 +774,7 @@ function handle(string $action, array $in, ?array $u) {
     case 'leaderboards':
         return leaderboards(nint($in['tournament_id'] ?? null), 15, $u);
     }
+    if (strpos($action, 'admin_fix_') === 0) return fix_action($action, $u, $in);          // v1.42 match correction desk
     if (strpos($action, 'admin_') === 0) return admin_action($action, $u, $in);
     fail('Unknown action', 404);
 }

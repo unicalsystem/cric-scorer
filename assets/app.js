@@ -1131,6 +1131,7 @@ App.matchMenu = () => {
       ? '<button class="pbtn" onclick="App.setVis(\'public\')">🌍 Make match public <span class="s">everyone can watch</span></button>'
       : '<button class="pbtn" onclick="App.setVis(\'private\')">🔒 Make match private <span class="s">only you can see it</span></button>') : ''}
     ${m.visibility === 'private' ? '' : '<button class="pbtn" onclick="App.shareMatch()">🔗 Share live score link</button>'}
+    ${S.user && S.user.is_admin && ['completed', 'abandoned'].includes(st.match.status) ? `<a class="pbtn" href="fix.php?m=${st.match.id}" target="_blank" rel="noopener">🛠 Correct balls, batters &amp; bowlers (admin desk)</a>` : ''}
     ${st.is_owner ? '<button class="pbtn" style="color:var(--red)" onclick="App.deleteMatch()">🗑️ Delete match</button>' : ''}</div>`);
 };
 /* ----- Who scores this match ----- */

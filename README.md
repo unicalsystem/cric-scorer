@@ -109,6 +109,11 @@ Made for Aarush & Aayush.
   selected usernames, or on for everyone); **Updates** (one-tap update from GitHub with backup and roll back, and "ask
   everyone to update now"); **Help desk** (player messages by ticket number, reply in the app); **News** (Home-screen
   announcements); **Errors** (error reports by reference code, personal details blanked out, kept one year).
+- **Match correction desk** (`/fix.php`, admin account only, made for a laptop) - for a finished match that was scored
+  wrongly: pick the match → innings → over → ball and correct the striker, non-striker, bowler, runs, extra or wicket;
+  add or delete balls; replace a wrongly picked player for the whole match. Totals, target, result, Player of the Match,
+  points table and stats are rebuilt after every save. Every save keeps a copy first (`fix_snapshots` table), so there
+  is Undo, History and "Restore the match as originally scored". Code: `fix.php`, `inc/fix.php`, `assets/fix.js|css`.
 
 ## Releasing a new version
 1. Change the code, bump `APP_VERSION` in `inc/version.php` and the cache name in `sw.js`.
@@ -176,6 +181,7 @@ index.php        app shell        api.php       JSON API        install.php   on
 config.php       database config  inc/          scoring engine  assets/       app JS, CSS, icons
 privacy.php      /privacy         terms.php     /terms          learn.php     /learn pages
 match.php        /m/ID share page sitemap.php   /sitemap.xml    robots.php    /robots.txt
+fix.php          admin match correction desk (laptop)
 manifest.json    PWA manifest     sw.js         offline cache   sql/          schema + seed data
 ```
 

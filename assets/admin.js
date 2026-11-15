@@ -2,7 +2,7 @@
 'use strict';
 const Admin = (() => {
   const A = {};
-  const TABS = [['stats', '📊 Stats'], ['online', '🟢 Online'], ['users', '👥 Players'], ['roster', '🧢 Team players'], ['imports', '📥 Imports'], ['features', '🚦 Roll-out'], ['update', '⬆️ Updates'], ['help', '💬 Help desk'], ['news', '📣 News'], ['errors', '🐞 Errors']];
+  const TABS = [['stats', '📊 Stats'], ['online', '🟢 Online'], ['users', '👥 Players'], ['roster', '🧢 Team players'], ['fix', '🛠 Fix a match'], ['imports', '📥 Imports'], ['features', '🚦 Roll-out'], ['update', '⬆️ Updates'], ['help', '💬 Help desk'], ['news', '📣 News'], ['errors', '🐞 Errors']];
   let userQ = '', userPage = 0;
   let tab = 'stats', helpStatus = 'open', onlineTimer = null;
   const num = n => Number(n || 0).toLocaleString('en-IN');
@@ -17,7 +17,7 @@ const Admin = (() => {
     if (!S.user || !S.user.is_admin) { mount(topbar('Admin', { back: true }) + '<div class="content"><div class="empty">Only the administrator can open this page.</div></div>', 'more'); return; }
     if (onlineTimer) { clearInterval(onlineTimer); onlineTimer = null; }
     mount(frame(sk(4)), 'more');
-    const fn = { stats, online, users, roster, imports, features, update, help, news, errors }[tab];
+    const fn = { stats, online, users, roster, fix, imports, features, update, help, news, errors }[tab];
     await fn();
   };
 
@@ -275,6 +275,14 @@ const Admin = (() => {
   };
   A.playerSave = (e, id) => { e.preventDefault(); run(async () => { const f = formData(e.target); const d = await api('admin_player_save', { id, ...f, _q: rosterQ, _team: rosterTeam }); closeSheet(); toast('Saved ✓'); roster(d); }, e.submitter); };
   A.playerDelete = id => confirmSheet('Delete this player?', 'They are removed from the team. Players who have played matches cannot be deleted.', 'Delete', () => run(async () => { await api('admin_player_delete', { id }); closeSheet(); toast('Deleted'); roster(); }));
+
+  /* ---------- v1.42: Match correction desk (a separate full-screen page, made for a laptop) ---------- */
+  async function fix() {
+    mount(frame(`<div class="card"><h3 style="margin:0 0 6px">🛠 Match correction desk</h3>
+      <p class="small" style="margin:0 0 10px">For a <b>finished</b> match that was scored wrongly: pick the match, then the over, then the ball - and correct the striker, non-striker, bowler, runs, extra or wicket of any ball. You can also add a missed ball, delete a wrong one, or swap a wrongly picked player for the whole match.</p>
+      <p class="small muted" style="margin:0 0 12px">Totals, the target, the result, Player of the Match, points table and player stats are worked out again after every change. Every change can be undone, and the match can always be put back as it was originally scored. Best on a laptop.</p>
+      <a class="btn block" href="fix.php" target="_blank" rel="noopener">Open the correction desk ↗</a></div>`, 'Fix a match'), 'more');
+  }
 
   /* ---------- v1.34: Imports - one-tap undo ---------- */
   async function imports(data) {
