@@ -289,13 +289,15 @@ const Admin = (() => {
         <label class="small muted">From <input class="input" type="date" name="f" value="${esc(setupFrom)}" style="width:auto"></label>
         <label class="small muted">To <input class="input" type="date" name="d" value="${esc(setupTo)}" style="width:auto"></label>
         <button class="btn sm">Search</button></form>
-      <div class="small" style="margin:0 2px 8px"><b>${ready}</b> of <b>${d.matches.length}</b> ready</div>
+      <div class="row" style="margin:0 2px 8px;gap:8px;flex-wrap:wrap"><div class="small grow"><b>${ready}</b> of <b>${d.matches.length}</b> ready</div>
+        ${d.matches.length ? `<a class="btn sm light" target="_blank" rel="noopener" href="pdf.php?sheets=${d.matches.slice(0, 40).map(m => m.id).join(',')}">🖨 Print score sheets for these ${Math.min(40, d.matches.length)} matches</a>` : ''}
+        <a class="btn sm light" target="_blank" rel="noopener" href="pdf.php?sheets=blank">🖨 Blank sheet</a></div>
       ${d.matches.length ? d.matches.map(m => `<div class="card"><div class="row"><div class="grow"><b>${esc(m.t1)} <span class="muted">v</span> ${esc(m.t2)}</b>
           <div class="small muted">#${m.id} · ${esc(m.tournament || 'Friendly')}${m.round ? ' · ' + esc(m.round) : ''}${m.date ? ' · ' + esc(fmtDate(m.date)) : ''}${m.venue ? ' · ' + esc(m.venue) : ''} · ${m.overs} ov · ${m.pps} a side</div></div>
           ${m.ready ? '<span class="role-tag" style="background:var(--green);color:#fff">Ready</span>' : ''}</div>
         <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${chip(!!m.scorer, 'Scorer: ' + (m.scorer ? esc(m.scorer.name) : 'not named'))}${chip(m.teams_done, `Teams ${m.n1} · ${m.n2}`)}${chip(!!m.toss, 'Toss' + (m.toss ? ': ' + esc(m.toss) : ''))}</div>
         <form class="row" style="gap:6px" onsubmit="event.preventDefault();Admin.setupScorer(this,${m.id})"><input class="input grow" name="u" placeholder="Scorer's username (empty = take back)" value="${m.scorer ? esc(m.scorer.username) : ''}" autocapitalize="none" autocomplete="off"><button class="btn sm light">${m.scorer ? 'Change' : 'Set scorer'}</button>
-          <button type="button" class="btn sm" onclick="go('#/match/${m.id}')">Open setup ›</button></form></div>`).join('')
+          <a class="btn sm light" target="_blank" rel="noopener" href="pdf.php?sheets=${m.id}">🖨 Sheet</a><button type="button" class="btn sm" onclick="go('#/match/${m.id}')">Open setup ›</button></form></div>`).join('')
         : '<div class="card empty"><div class="big">📋</div>No matches waiting to start.</div>'}`, 'Match setup'), 'more');
   }
   A.setupFind = f => { setupQ = f.q.value.trim(); setupTour = +f.t.value; setupFrom = f.f.value; setupTo = f.d.value; setup(); };

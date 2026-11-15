@@ -13,7 +13,7 @@ function pdf_token(int $matchId): string { return substr(hash_hmac('sha256', 'sc
 function pdf_token_ok(int $matchId, string $t): bool { return $t !== '' && hash_equals(pdf_token($matchId), $t); }
 
 class CsPdf {
-    const W = 595.28, H = 841.89;
+    public float $W = 595.28, $H = 841.89;
     public float $mx = 34, $top = 40, $bottom = 38;
     public float $y = 0;
     private array $pages = [];
@@ -21,7 +21,7 @@ class CsPdf {
     public string $footer = '';
     private static ?array $wr = null, $wb = null;
 
-    function __construct() { $this->initWidths(); $this->y = $this->top; }
+    function __construct(bool $landscape = false) { $this->initWidths(); $this->y = $this->top; if ($landscape) { $this->W = 841.89; $this->H = 595.28; $this->mx = 30; $this->top = 28; $this->bottom = 34; $this->y = $this->top; } }
 
     private function initWidths(): void {
         if (self::$wr) return;
@@ -80,20 +80,23 @@ class CsPdf {
         $s = self::enc($s); if ($s === '') return;
         $tw = $this->width($s, $size, $bold);
         if ($align === 'r') $x += $w - $tw; elseif ($align === 'c') $x += ($w - $tw) / 2;
-        $base = self::H - ($top + $size * 0.85);
+        $base = $this->H - ($top + $size * 0.85);
         $this->buf .= sprintf("BT /%s %.2F Tf %s rg %.2F %.2F Td (%s) Tj ET\n", $bold ? 'F2' : 'F1', $size, self::col($color), $x, $base, self::esc($s));
     }
     function rect(float $x, float $top, float $w, float $h, array $fill): void {
-        $this->buf .= sprintf("%s rg %.2F %.2F %.2F %.2F re f\n", self::col($fill), $x, self::H - $top - $h, $w, $h);
+        $this->buf .= sprintf("%s rg %.2F %.2F %.2F %.2F re f\n", self::col($fill), $x, $this->H - $top - $h, $w, $h);
+    }
+    function box(float $x, float $top, float $w, float $h, array $stroke = [0.55, 0.62, 0.72], float $lw = 0.6): void {
+        $this->buf .= sprintf("%s RG %.2F w %.2F %.2F %.2F %.2F re S\n", self::col($stroke), $lw, $x, $this->H - $top - $h, $w, $h);
     }
     function hline(float $x, float $top, float $w, array $c = [0.8, 0.8, 0.8], float $lw = 0.5): void {
-        $this->buf .= sprintf("%s RG %.2F w %.2F %.2F m %.2F %.2F l S\n", self::col($c), $lw, $x, self::H - $top, $x + $w, self::H - $top);
+        $this->buf .= sprintf("%s RG %.2F w %.2F %.2F m %.2F %.2F l S\n", self::col($c), $lw, $x, $this->H - $top, $x + $w, $this->H - $top);
     }
-    function usable(): float { return self::W - 2 * $this->mx; }
+    function usable(): float { return $this->W - 2 * $this->mx; }
     function newPage(): void { $this->pages[] = $this->buf; $this->buf = ''; $this->y = $this->top; }
     /** Make sure $h points are free on this page; else start a new one. */
     function need(float $h): bool {
-        if ($this->y + $h <= self::H - $this->bottom) return false;
+        if ($this->y + $h <= $this->H - $this->bottom) return false;
         $this->newPage(); return true;
     }
     function gap(float $h): void { $this->y += $h; }
@@ -125,10 +128,10 @@ class CsPdf {
         $this->pages[] = $this->buf; $this->buf = '';
         $n = count($this->pages);
         foreach ($this->pages as $i => &$p) {
-            $p .= sprintf("%s RG 0.5 w %.2F %.2F m %.2F %.2F l S\n", self::col([0.8, 0.8, 0.8]), $this->mx, 30, self::W - $this->mx, 30);
+            $p .= sprintf("%s RG 0.5 w %.2F %.2F m %.2F %.2F l S\n", self::col([0.8, 0.8, 0.8]), $this->mx, 30, $this->W - $this->mx, 30);
             $tmp = $this->buf; $this->buf = '';
-            $this->text($this->mx, self::H - 26, $this->footer, 7.5, false, [0.45, 0.45, 0.45]);
-            $this->text($this->mx, self::H - 26, 'Page ' . ($i + 1) . ' of ' . $n, 7.5, false, [0.45, 0.45, 0.45], 'r', $this->usable());
+            $this->text($this->mx, $this->H - 26, $this->footer, 7.5, false, [0.45, 0.45, 0.45]);
+            $this->text($this->mx, $this->H - 26, 'Page ' . ($i + 1) . ' of ' . $n, 7.5, false, [0.45, 0.45, 0.45], 'r', $this->usable());
             $p .= $this->buf; $this->buf = $tmp;
         }
         unset($p);
@@ -142,7 +145,7 @@ class CsPdf {
         $objs[5] = '<< /Title (Cric-Scorer scorecard) /Producer (Cric-Scorer) >>';
         foreach ($this->pages as $i => $content) {
             $pid = 6 + $i * 2; $cid = $pid + 1;
-            $objs[$pid] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' . $cid . ' 0 R >>';
+            $objs[$pid] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' . round($this->W, 2) . ' ' . round($this->H, 2) . '] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' . $cid . ' 0 R >>';
             $data = $content; $filter = '';
             if (function_exists('gzcompress')) { $data = gzcompress($content, 6); $filter = ' /Filter /FlateDecode'; }
             $objs[$cid] = ['<< /Length ' . strlen($data) . $filter . ' >>', $data];
@@ -171,7 +174,7 @@ function pdf_scorecard(array $st): string {
     $uw = $p->usable();
 
     // ---- Header ----
-    $p->rect(0, 0, CsPdf::W, 78, $G);
+    $p->rect(0, 0, $p->W, 78, $G);
     $p->text($p->mx, 16, 'FULL SCORECARD', 8, true, [0.75, 0.93, 0.85]);
     $p->text($p->mx, 28, $t1['name'] . '  vs  ' . $t2['name'], 19, true, [1, 1, 1]);
     $sub = array_filter([
@@ -313,4 +316,131 @@ function ordinal_inn(int $n): string { return [1 => '1st', 2 => '2nd', 3 => '3rd
 function pdf_action(string $action, array $u, array $in): array {
     $id = (int)($in['id'] ?? 0); load_match($id);
     return ['id' => $id, 'k' => pdf_token($id)];
+}
+
+
+/* ================= v1.46: printable paper score sheets, pre-filled for upcoming matches ================= */
+/** $matches: list of match_state() arrays, or [null] for one blank (template) set. */
+function pdf_score_sheets(array $matches): string {
+    $club = strtoupper((string)setting('sheet_club', 'RV Sports Club'));
+    $NAVY = [0.09, 0.19, 0.37]; $LIGHT = [0.92, 0.95, 0.99]; $LINE = [0.55, 0.62, 0.72];
+    $p = new CsPdf(true); $p->footer = $club . ' - score sheet';
+    $first = true;
+    foreach ($matches as $st) {
+        for ($inn = 1; $inn <= 2; $inn++) {
+            if (!$first) $p->newPage(); $first = false;
+            score_sheet_page($p, $st, $inn, $club, $NAVY, $LIGHT, $LINE);
+            $p->newPage();
+            over_grid_page($p, $st, $inn, $club, $NAVY, $LIGHT, $LINE);
+        }
+    }
+    return $p->output();
+}
+function sheet_info(?array $st, int $inn): array {
+    $o = ['match' => '', 'date' => '', 'venue' => '', 'bat' => '', 'bowl' => '', 'overs' => '', 'toss' => '', 'decision' => 'Bat / Bowl', 'xi' => [], 'pps' => 9, 'target' => ''];
+    if (!$st) return $o;
+    $m = $st['match']; $t1 = $st['team1']; $t2 = $st['team2'];
+    $o['match'] = $t1['name'] . ' v ' . $t2['name'] . (!empty($m['round_name']) ? ' - ' . $m['round_name'] : '');
+    $o['date'] = $m['match_date'] ? date('j M Y, g:i a', strtotime($m['match_date'])) : '';
+    $o['venue'] = (string)($m['venue'] ?? ''); $o['overs'] = (string)$m['overs']; $o['pps'] = max(9, (int)$m['players_per_side']);
+    $o['teams'] = [$t1['name'], $t2['name']];
+    if ($m['toss_winner_id']) {
+        $tw = (int)$m['toss_winner_id'] === (int)$t1['id'] ? $t1 : $t2;
+        $o['toss'] = $tw['name']; $o['decision'] = $m['toss_decision'] === 'bat' ? 'BAT' : 'BOWL';
+        $batFirst = $m['toss_decision'] === 'bat' ? $tw : ((int)$tw['id'] === (int)$t1['id'] ? $t2 : $t1);
+        $bowlFirst = (int)$batFirst['id'] === (int)$t1['id'] ? $t2 : $t1;
+        $bat = $inn === 1 ? $batFirst : $bowlFirst; $bowl = $inn === 1 ? $bowlFirst : $batFirst;
+        $o['bat'] = $bat['name']; $o['bowl'] = $bowl['name'];
+        $o['xi'] = array_map(fn($x) => $x['name'], $st['xi'][(int)$bat['id']] ?? []);
+        $o['field'] = array_map(fn($x) => $x['name'], $st['xi'][(int)$bowl['id']] ?? []);
+    }
+    return $o;
+}
+function score_sheet_page(CsPdf $p, ?array $st, int $inn, string $club, array $NAVY, array $LIGHT, array $LINE): void {
+    $i = sheet_info($st, $inn); $x0 = $p->mx; $uw = $p->usable();
+    $p->rect($x0, $p->y, $uw, 22, $NAVY);
+    $p->text($x0, $p->y + 5, $club . '  |  ' . ($inn === 1 ? 'FIRST' : 'SECOND') . ' INNINGS SCORE SHEET', 13, true, [1, 1, 1], 'c', $uw);
+    $p->gap(26);
+    $third = $uw / 3;
+    $fld = function (string $label, string $val, int $col, int $row) use ($p, $x0, $third, $LINE, $LIGHT) {
+        $x = $x0 + $col * $third; $y = $p->y + $row * 17;
+        $p->rect($x, $y, $third, 17, $LIGHT); $p->box($x, $y, $third, 17, $LINE, 0.5);
+        $p->text($x + 4, $y + 4, $label, 8.5, true);
+        $lw = $p->width($label, 8.5, true) + 8;
+        if ($val !== '') $p->text($x + $lw, $y + 4, $p->fit($val, $third - $lw - 4, 9, false), 9, false, [0.05, 0.2, 0.55]);
+        else $p->hline($x + $lw, $y + 13, $third - $lw - 6, [0.5, 0.5, 0.5], 0.4);
+    };
+    $fld('Match:', $i['match'], 0, 0); $fld('Date:', $i['date'], 1, 0); $fld('Venue:', $i['venue'], 2, 0);
+    $fld('Batting team:', $i['bat'], 0, 1); $fld('Bowling team:', $i['bowl'], 1, 1); $fld('Overs:', $i['overs'], 2, 1);
+    if ($inn === 1) { $fld('Toss won by:', $i['toss'], 0, 2); $fld('Decision:', $i['decision'], 1, 2); $fld('Start time:', '', 2, 2); }
+    else { $fld('Target:', '', 0, 2); $fld('Required RR:', '', 1, 2); $fld('Start time:', '', 2, 2); }
+    $p->gap(17 * 3 + 6);
+    $p->text($x0, $p->y, 'BATTING', 9, true, $NAVY); $p->gap(12);
+    $w = [30, 0, 0, 0, 36, 36, 32, 32, 44]; $rest = $uw - array_sum($w);
+    $w[1] = $rest * 0.30; $w[2] = $rest * 0.28; $w[3] = $rest * 0.22; $w[0] = 30 + $rest * 0.20;
+    $hd = ['Batter', 'How out', 'Bowler', 'Fielder', 'R', 'B', '4s', '6s', 'SR'];
+    $rowH = 16.5; $y = $p->y; $x = $x0;
+    $p->rect($x0, $y, $uw, 15, $NAVY);
+    foreach ($hd as $k => $h) { $p->text($x + 3, $y + 3.5, $h, 8.5, true, [1, 1, 1]); $x += $w[$k]; }
+    $y += 15; $n = $i['pps'];
+    for ($r = 0; $r < $n; $r++) {
+        $x = $x0;
+        foreach ($w as $k => $cw) { $p->box($x, $y, $cw, $rowH, $LINE, 0.5); $x += $cw; }
+        $nm = $i['xi'][$r] ?? '';
+        $p->text($x0 + 3, $y + 4, ($r + 1) . '.  ' . $p->fit($nm, $w[0] - 20, 9), 9, false, $nm !== '' ? [0.05, 0.2, 0.55] : [0.4, 0.4, 0.4]);
+        $y += $rowH;
+    }
+    // extras + total (two real rows, text kept inside)
+    $p->box($x0, $y, $uw, 17, $LINE, 0.5); $p->rect($x0, $y, $w[0], 17, $LIGHT); $p->box($x0, $y, $w[0], 17, $LINE, 0.5);
+    $p->text($x0 + 3, $y + 4.5, 'Extras', 8.5, true);
+    $p->text($x0 + $w[0] + 4, $y + 4.5, 'B: ______   LB: ______   W: ______   NB: ______   Pen: ______', 8.5);
+    $p->text($x0 + $uw - 120, $y + 4.5, 'Extras total: ______', 8.5, true); $y += 17;
+    $p->box($x0, $y, $uw, 17, $LINE, 0.5); $p->rect($x0, $y, $w[0], 17, $LIGHT); $p->box($x0, $y, $w[0], 17, $LINE, 0.5);
+    $p->text($x0 + 3, $y + 4.5, 'TOTAL', 8.5, true);
+    $p->text($x0 + $w[0] + 4, $y + 4.5, 'Runs: ________    Wickets: ________    Overs: ________ . ____', 9, true); $y += 17 + 7;
+    // bowling
+    $p->text($x0, $y, 'BOWLING', 9, true, $NAVY); $y += 12;
+    $bw = [0, 36, 36, 36, 36, 36, 36, 50]; $bw[0] = $uw - array_sum($bw); $bh = ['Bowler', 'O', 'M', 'R', 'W', 'NB', 'WD', 'Econ'];
+    $p->rect($x0, $y, $uw, 15, $NAVY); $x = $x0;
+    foreach ($bh as $k => $h) { $p->text($x + 3, $y + 3.5, $h, 8.5, true, [1, 1, 1]); $x += $bw[$k]; }
+    $y += 15; $brow = 7;
+    for ($r = 0; $r < $brow; $r++) {
+        $x = $x0; foreach ($bw as $cw) { $p->box($x, $y, $cw, 15.5, $LINE, 0.5); $x += $cw; }
+        $f = $i['field'][$r] ?? ''; if ($f !== '') $p->text($x0 + 3, $y + 3.5, $p->fit($f, $bw[0] - 6, 8.5), 8.5, false, [0.5, 0.5, 0.5]);
+        $y += 15.5;
+    }
+    $y += 6;
+    // FOW
+    $p->box($x0, $y, $uw, 30, $LINE, 0.5); $p->text($x0 + 4, $y + 4, 'Fall of wickets', 8.5, true);
+    for ($r = 0; $r < 2; $r++) { $line = ''; for ($k = 1; $k <= 4; $k++) { $line .= ($r * 4 + $k) . '. ______ / ______      '; } $p->text($x0 + 100, $y + 4 + $r * 12, $line, 8.5); }
+    $y += 30;
+    $p->box($x0, $y, $uw, 16, $LINE, 0.5);
+    $p->text($x0 + 4, $y + 4, 'Umpires: ______________________________    Scorer: ______________________________    Notes: ____________________________________', 8.5);
+}
+function over_grid_page(CsPdf $p, ?array $st, int $inn, string $club, array $NAVY, array $LIGHT, array $LINE): void {
+    $i = sheet_info($st, $inn); $x0 = $p->mx; $uw = $p->usable();
+    $overs = $i['overs'] !== '' ? max(1, (int)$i['overs']) : 8; $perPage = 20; $page = 0;
+    while (true) {
+        if ($page) $p->newPage();
+        $from = $page * $perPage; $to = min($overs, $from + $perPage); $page++;
+        $p->rect($x0, $p->y, $uw, 20, $NAVY);
+        $p->text($x0, $p->y + 4, $club . '  |  ' . ($inn === 1 ? 'FIRST' : 'SECOND') . ' INNINGS - OVER BY OVER' . ($overs > $perPage ? '  (overs ' . ($from + 1) . '-' . $to . ')' : ''), 12, true, [1, 1, 1], 'c', $uw);
+        $p->gap(23);
+        $p->text($x0, $p->y, 'Match: ' . ($i['match'] ?: '________________________') . '     Batting team: ' . ($i['bat'] ?: '____________________') . '     Date: ' . ($i['date'] ?: '____________'), 9, true); $p->gap(16);
+        $cols = [34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42, 38, 56]; $bowlW = 150; $balls = 8; $cw = 38;
+        $cols = array_merge([34, $bowlW], array_fill(0, $balls, $cw), [44, 40, 66]);
+        $tot = array_sum($cols); if ($tot != $uw) { $k = $uw / $tot; $cols = array_map(fn($c) => $c * $k, $cols); }
+        $hd = array_merge(['Over', 'Bowler'], array_map(fn($b) => (string)$b, range(1, $balls)), ['Runs', 'Wkts', 'Score']);
+        $y = $p->y; $x = $x0; $p->rect($x0, $y, array_sum($cols), 15, $NAVY);
+        foreach ($hd as $k => $h) { $p->text($x + 2, $y + 3.5, $h, 8.5, true, [1, 1, 1], 'c', $cols[$k] - 4); $x += $cols[$k]; }
+        $y += 15; $avail = $p->H - $p->bottom - $y - 30; $rh = min(24, $avail / max(1, ($to - $from)));
+        for ($o = $from; $o < $to; $o++) {
+            $x = $x0; foreach ($cols as $k => $c) { if ($k === 0) $p->rect($x, $y, $c, $rh, $LIGHT); $p->box($x, $y, $c, $rh, $LINE, 0.5); $x += $c; }
+            $p->text($x0, $y + $rh / 2 - 4.5, (string)($o + 1), 9, true, [0.1, 0.1, 0.1], 'c', $cols[0]);
+            $y += $rh;
+        }
+        $p->y = $y + 8;
+        $p->text($x0, $p->y, 'Write each ball: 0 1 2 3 4 6   W = wicket   Wd = wide   Nb = no ball   B = bye   Lb = leg bye   (wides and no-balls take an extra box)', 8, false, [0.4, 0.4, 0.4]);
+        if ($to >= $overs) break;
+    }
 }

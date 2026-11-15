@@ -6,9 +6,20 @@ header('X-Robots-Tag: noindex, nofollow');
 header('Cache-Control: no-store');
 try {
     ensure_schema();
-    $id = (int)($_GET['id'] ?? 0);
     $u = current_user();
     $isAdmin = $u && !empty($u['is_admin']);
+    if (isset($_GET['sheets'])) {   // v1.46: printable paper score sheets for upcoming matches (admin) - ?sheets=12,13  or  ?sheets=blank
+        if (!$isAdmin) { http_response_code(403); header('Content-Type: text/plain; charset=utf-8'); echo 'Only the administrator can print score sheets.'; exit; }
+        $list = [];
+        if ($_GET['sheets'] === 'blank') $list = [null];
+        else foreach (array_slice(array_unique(array_filter(array_map('intval', explode(',', (string)$_GET['sheets'])))), 0, 40) as $mid) $list[] = match_state($mid, $u);
+        if (!$list) { http_response_code(404); header('Content-Type: text/plain; charset=utf-8'); echo 'No matches chosen.'; exit; }
+        $pdf = pdf_score_sheets($list);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: ' . (isset($_GET['dl']) ? 'attachment' : 'inline') . '; filename="score-sheets.pdf"');
+        header('Content-Length: ' . strlen($pdf)); echo $pdf; exit;
+    }
+    $id = (int)($_GET['id'] ?? 0);
     if (!$id || !(pdf_token_ok($id, (string)($_GET['k'] ?? '')) || $isAdmin)) {
         http_response_code(403); header('Content-Type: text/plain; charset=utf-8');
         echo "This scorecard link is not valid. Ask the organiser for a new link."; exit;

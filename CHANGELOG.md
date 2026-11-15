@@ -4,6 +4,10 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.46.0 - 15 November 2026
+- **Printable paper score sheets, pre-filled for each match** (admin): Admin → 📋 Match setup → "🖨 Sheet" per match, or "Print score sheets for these matches" for everything listed (use the date filter to pick a day). Each match gets, for both innings, a landscape A4 batting/bowling sheet and an over-by-over ball grid. Match, date, venue, overs, teams, toss and the batting order are filled in from the app. "Blank sheet" prints an empty set.
+- Fixes on the old sheet: readable table headings, Extras/Total no longer overflow, tables fill the page, 7 bowler rows, ball-by-ball grid added.
+
 ## 1.45.0 - 15 November 2026
 - **Captain & keeper any time**: new "👑 Captain & keeper" in the match menu (⋯) and on the "Get the match ready" screen. Set it before the match, correct it during the match, or (admin) fix it on a completed match - captain stats follow automatically.
 - **Playing teams can be saved part-way** and completed later: no minimum is needed to save. A match only becomes ready (and can start) once each side has the minimum players and the toss is done.
