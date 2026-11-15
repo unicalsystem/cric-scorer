@@ -4,6 +4,11 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.45.0 - 15 November 2026
+- **Captain & keeper any time**: new "👑 Captain & keeper" in the match menu (⋯) and on the "Get the match ready" screen. Set it before the match, correct it during the match, or (admin) fix it on a completed match - captain stats follow automatically.
+- **Playing teams can be saved part-way** and completed later: no minimum is needed to save. A match only becomes ready (and can start) once each side has the minimum players and the toss is done.
+- **Date-wise match filters**: the Matches list has Any date / Today / Yesterday / Tomorrow / This week / This month / Pick dates. Admin → Match setup and the correction desk have From / To dates.
+
 ## 1.44.0 - 15 November 2026
 - **Full scorecard PDF** (administrator): every ball, every run and every over on a printable A4 sheet - result, toss, Player of the Match, batting and bowling tables, extras, fall of wickets, partnerships, an over-by-over summary and the complete ball-by-ball log with the running score. Find it under ⋯ on any started match ("📄 Full scorecard PDF") and on the correction desk ("📄 PDF scorecard").
 - **Share with teams for review**: "Copy link for teams" gives a link to that one match's PDF that works without a login. The PDF is made fresh each time, so it shows the latest corrections.

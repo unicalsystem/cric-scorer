@@ -43,6 +43,7 @@ $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
       <div class="step"><i>1</i> Pick the match</div>
       <input type="search" id="q" placeholder="Search team, title or match no." autocomplete="off">
       <select id="tour"><option value="0">All tournaments</option></select>
+      <div class="dates"><label>From <input type="date" id="dfrom"></label><label>To <input type="date" id="dto"></label><button type="button" class="ghost" id="dclear">Any date</button></div>
     </div>
     <div id="matches" class="mlist"><div class="hint">Loading matches…</div></div>
   </aside>

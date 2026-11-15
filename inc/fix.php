@@ -37,6 +37,7 @@ function fix_matches(array $in): array {
     $tid = (int)($in['tournament_id'] ?? 0);
     if ($tid === -1) $where[] = 'm.tournament_id IS NULL';
     elseif ($tid > 0) { $where[] = 'm.tournament_id=?'; $p[] = $tid; }
+    date_filter($in, 'm.match_date', $where, $p);
     $q = trim((string)($in['q'] ?? ''));
     if ($q !== '') {
         $where[] = '(t1.name LIKE ? OR t2.name LIKE ? OR m.title LIKE ? OR tr.name LIKE ? OR m.id=?)';

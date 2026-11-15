@@ -37,7 +37,7 @@
 
   /* ---------- 1. match list ---------- */
   async function loadList() {
-    const d = await api('admin_fix_matches', { q: $('#q').value.trim(), tournament_id: +$('#tour').value });
+    const d = await api('admin_fix_matches', { q: $('#q').value.trim(), tournament_id: +$('#tour').value, date_from: $('#dfrom').value, date_to: $('#dto').value });
     F.list = d.matches;
     if (!F.tours.length && d.tournaments.length) {
       F.tours = d.tournaments;
@@ -284,7 +284,7 @@
   /* ---------- events ---------- */
   document.addEventListener('change', e => {
     const t = e.target;
-    if (t.id === 'tour') { run(loadList); return; }
+    if (t.id === 'tour' || t.id === 'dfrom' || t.id === 'dto') { run(loadList); return; }
     if (t.id === 'note') { F.note = t.value; return; }
     if (t.id === 'over-bowler' && t.value) {
       const id = +t.value;
@@ -308,6 +308,7 @@
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
   document.addEventListener('click', e => {
+    if (e.target.id === 'dclear') { $('#dfrom').value = ''; $('#dto').value = ''; run(loadList); return; }
     if (e.target.dataset && e.target.dataset.close && e.target.classList.contains('modal-bg')) { closeModal(); return; }
     const el = e.target.closest('[data-act]'); if (!el) return;
     const a = el.dataset.act, i = +el.dataset.i, b = F.draft[i];

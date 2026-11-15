@@ -569,12 +569,30 @@ App.installHelp = () => sheet(`<h3>Install as an app 📲</h3><div class="sub">C
   <div class="card" style="box-shadow:none;border:1px solid var(--line)"><b>iPhone / iPad (Safari)</b><div class="small muted">Tap the Share button → <b>Add to Home Screen</b>.</div></div>`);
 
 /* ---------- Matches list ---------- */
+function dateRange(k) {
+  const y = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const t = new Date(), add = n => { const d = new Date(t); d.setDate(d.getDate() + n); return d; };
+  const dow = (t.getDay() + 6) % 7;   // Monday = 0
+  switch (k) {
+    case 'today': return [y(t), y(t)];
+    case 'yesterday': return [y(add(-1)), y(add(-1))];
+    case 'tomorrow': return [y(add(1)), y(add(1))];
+    case 'week': return [y(add(-dow)), y(add(6 - dow))];
+    case 'month': return [y(new Date(t.getFullYear(), t.getMonth(), 1)), y(new Date(t.getFullYear(), t.getMonth() + 1, 0))];
+    case 'custom': return [S.mfrom || '', S.mto || ''];
+    default: return ['', ''];
+  }
+}
+App.mDate = k => { S.mdate = k; if (k === 'custom' && !S.mfrom && !S.mto) { const [a] = dateRange('today'); S.mfrom = a; S.mto = a; } render(); };
 async function viewMatches() {
   const tabs = [['live', 'Live'], ['scheduled', 'Upcoming'], ['completed', 'Completed']];
   mount(topbar('Matches') + `<div class="content"><div class="seg">${tabs.map(([k, l]) => `<button class="${S.mtab === k ? 'on' : ''}" onclick="S.mtab='${k}';render()">${l}</button>`).join('')}</div>
     <div class="chips" style="margin-bottom:12px">${[['all', '🌍 Everyone'], ['mine', '🧢 Mine'], ['following', '👥 Following']].map(([k, l]) => `<button class="chip ${(S.mscope || 'all') === k ? 'on' : ''}" onclick="S.mscope='${k}';render()">${l}</button>`).join('')}</div>
+    <div class="chips" style="margin-bottom:${S.mdate === 'custom' ? 6 : 12}px">${[['all', '📅 Any date'], ['today', 'Today'], ['yesterday', 'Yesterday'], ['tomorrow', 'Tomorrow'], ['week', 'This week'], ['month', 'This month'], ['custom', 'Pick dates']].map(([k, l]) => `<button class="chip ${(S.mdate || 'all') === k ? 'on' : ''}" onclick="App.mDate('${k}')">${l}</button>`).join('')}</div>
+    ${S.mdate === 'custom' ? `<div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap"><label class="small muted">From <input class="input" type="date" value="${esc(S.mfrom || '')}" onchange="S.mfrom=this.value;render()" style="width:auto"></label><label class="small muted">To <input class="input" type="date" value="${esc(S.mto || '')}" onchange="S.mto=this.value;render()" style="width:auto"></label></div>` : ''}
     <div id="ml">${sk(3)}</div></div><button class="fab" aria-label="New match" onclick="go('#/match/new')">${I.plus}</button>`, 'matches');
-  const d = await api('matches_list', { status: S.mtab, scope: S.mscope || 'all' });
+  const [df, dt] = dateRange(S.mdate || 'all');
+  const d = await api('matches_list', { status: S.mtab, scope: S.mscope || 'all', date_from: df, date_to: dt });
   $('#ml').innerHTML = d.matches.length ? d.matches.map(matchCard).join('')
     : `<div class="card empty"><div class="big">${S.mtab === 'live' ? '📡' : S.mtab === 'scheduled' ? '📅' : '🏁'}</div>No ${S.mtab === 'scheduled' ? 'upcoming' : S.mtab} matches${S.mscope === 'following' ? ' from players you follow' : ''}.
       ${S.mscope === 'following' ? `<br><button class="btn sm" style="margin-top:10px" onclick="go('#/people')">👥 Find players to follow</button>` : ''}</div>`;
@@ -1134,6 +1152,7 @@ App.matchMenu = () => {
       : '<button class="pbtn" onclick="App.setVis(\'private\')">🔒 Make match private <span class="s">only you can see it</span></button>') : ''}
     ${m.visibility === 'private' ? '' : '<button class="pbtn" onclick="App.shareMatch()">🔗 Share live score link</button>'}
     ${S.user && S.user.is_admin && ['completed', 'abandoned'].includes(st.match.status) ? `<a class="pbtn" href="fix.php?m=${st.match.id}" target="_blank" rel="noopener">🛠 Correct balls, batters &amp; bowlers (admin desk)</a>` : ''}
+    ${(['completed', 'abandoned'].includes(st.match.status) ? (S.user && S.user.is_admin) : (st.is_owner || (S.user && S.user.is_admin))) ? '<button class="pbtn" onclick="App.leadersSheet()">👑 Captain &amp; keeper <span class="s">set or correct</span></button>' : ''}
     ${S.user && S.user.is_admin && st.innings.length ? '<button class="pbtn" onclick="App.pdfSheet()">📄 Full scorecard PDF <span class="s">every ball · share with teams</span></button>' : ''}
     ${st.is_owner ? '<button class="pbtn" style="color:var(--red)" onclick="App.deleteMatch()">🗑️ Delete match</button>' : ''}</div>`);
 };
@@ -1276,11 +1295,26 @@ function setupHub() {
     <div class="small muted" style="margin:-4px 2px 12px">Do these in any order and save each one - even days before the match. The scorer only has to pick the openers and play.</div>
     ${st.is_owner ? row(!!m.scorer, '✍️ Scorer', scorerTxt, `<button class="btn sm light" onclick="App.scorerSheet()">${m.scorer ? 'Change' : 'Choose'}</button>`) : ''}
     ${row(!!su.teams_done, '🧢 Playing teams', su.teams_done ? `${esc(st.team1.short_name)} ${n(st.team1)} · ${esc(st.team2.short_name)} ${n(st.team2)} players picked` : `${esc(st.team1.short_name)} ${n(st.team1)} · ${esc(st.team2.short_name)} ${n(st.team2)} - not picked yet`, `<button class="btn sm ${su.teams_done ? 'light' : ''}" onclick="App.openXI()">${su.teams_done ? 'Change' : 'Pick'}</button>`)}
+    ${(st.is_owner || (S.user && S.user.is_admin)) ? row(false, '👑 Captain & keeper', ['team1', 'team2'].map(k => { const c = (st.xi[st[k].id] || []).find(p => p.is_captain); return esc(st[k].short_name) + ': ' + (c ? esc(c.name) : 'not picked'); }).join(' · '), `<button class="btn sm light" onclick="App.leadersSheet()">Set</button>`).replace('setup-chk "', 'setup-chk ok"').replace('<span class="setup-chk ok"></span>', '<span class="setup-chk ok">👑</span>') : ''}
     ${row(!!m.toss_winner_id, '🪙 Toss', m.toss_winner_id ? `${esc(teamById(m.toss_winner_id).name)} won the toss and chose to ${m.toss_decision === 'bat' ? 'bat' : 'bowl'} first` : 'Not done yet - can be done before the teams are picked', `<button class="btn sm ${m.toss_winner_id ? 'light' : ''}" onclick="App.openToss()">${m.toss_winner_id ? 'Change' : 'Do toss'}</button>`)}
     ${st.needs === 'openers' ? '<button class="btn block" style="margin-top:6px" onclick="App.setupDone()">Teams & toss are ready - continue to openers →</button>' : '<div class="notice">When the playing teams and the toss are both saved, the openers screen appears and the match can start.</div>'}</div>`;
 }
 App.openXI = () => { S.setupView = 'xi'; S.squads = null; drawMatch(false); };
 App.openToss = () => { const m = S.m.match; S.toss = { w: m.toss_winner_id || null, d: m.toss_decision || null }; S.setupView = 'toss'; drawMatch(false); };
+App.leadersSheet = () => {
+  const st = S.m; S.ldr = S.ldr || {}; S.ldr = { cap: {}, wk: {} };
+  for (const t of [st.team1, st.team2]) { const x = st.xi[t.id] || []; S.ldr.cap[t.id] = (x.find(p => p.is_captain) || {}).id || 0; S.ldr.wk[t.id] = (x.find(p => p.is_keeper) || {}).id || 0; }
+  drawLeaders();
+};
+function drawLeaders() {
+  const st = S.m, L = S.ldr;
+  const blk = t => { const x = st.xi[t.id] || []; return `<div style="margin-top:12px"><b>${esc(t.name)}</b>${x.length ? '' : '<div class="small muted">No playing team saved yet - pick the players first, then the captain.</div>'}
+    <div class="plist">${x.map(p => `<div class="xirow"><div class="grow" style="padding:8px 4px">${esc(p.name)}</div><button class="tag ${L.cap[t.id] === p.id ? 'on' : ''}" onclick="App.ldrPick('cap',${t.id},${p.id})">C</button><button class="tag ${L.wk[t.id] === p.id ? 'on' : ''}" onclick="App.ldrPick('wk',${t.id},${p.id})">WK</button></div>`).join('')}</div></div>`; };
+  sheet(`<h3>👑 Captain &amp; keeper</h3><div class="sub">Tap <b>C</b> for captain, <b>WK</b> for keeper (tap again to clear). Saved to this match only${['completed', 'abandoned'].includes(st.match.status) ? ' - it also fixes the captain stats' : ''}.</div>${blk(st.team1)}${blk(st.team2)}
+    <button class="btn block" style="margin-top:14px" onclick="App.ldrSave(this)">Save</button>`);
+}
+App.ldrPick = (k, tid, pid) => { S.ldr[k][tid] = S.ldr[k][tid] === pid ? 0 : pid; const sc = document.querySelector('#sheet-root .sheet, #sheet-root > div > div'); const y = sc ? sc.scrollTop : 0; drawLeaders(); const sc2 = document.querySelector('#sheet-root .sheet, #sheet-root > div > div'); if (sc2) sc2.scrollTop = y; };
+App.ldrSave = btn => run(async () => { S.m = await api('match_leaders', { id: S.m.match.id, captain: S.ldr.cap, keeper: S.ldr.wk }); closeSheet(); toast('Captain & keeper saved ✓'); drawMatch(false); }, btn);
 App.pdfSheet = () => run(async () => {
   const id = S.m.match.id, r = await api('admin_pdf_link', { id });
   const url = new URL('pdf.php?id=' + id + '&k=' + r.k, location.href).href; S.pdfUrl = url;

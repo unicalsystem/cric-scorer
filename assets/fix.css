@@ -170,3 +170,5 @@ table.balls select.chg{border-color:var(--blue);box-shadow:0 0 0 2px rgba(37,99,
   .savebar{left:0;flex-wrap:wrap}
 }
 .wk2 select{color:var(--ink)}
+
+.dates{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:12px;color:#5b6b66}.dates label{display:flex;align-items:center;gap:4px}.dates input{padding:5px 6px;border:1px solid #cdd8d3;border-radius:8px;font:inherit}.dates .ghost{border:1px solid #cdd8d3;background:#fff;border-radius:8px;padding:5px 8px;cursor:pointer;font:inherit}

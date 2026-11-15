@@ -494,8 +494,9 @@ function handle(string $action, array $in, ?array $u) {
         $scope = $in['scope'] ?? (!empty($in['mine']) ? 'mine' : 'all');
         if ($scope === 'mine') { $where[] = '(owner_id=? OR scorer_id=?)'; $p[] = $u['id']; $p[] = $u['id']; }
         elseif ($scope === 'following') { $where[] = "owner_id IN (SELECT f.followee_id FROM follows f JOIN users o ON o.id=f.followee_id WHERE f.follower_id=? AND o.is_private=0)"; $p[] = $u['id']; }
+        date_filter($in, 'COALESCE(match_date, created_at)', $where, $p); $dated = !empty($in['date_from']) || !empty($in['date_to']);
         [$vs, $vp] = vis_sql($u); $where[] = $vs; $p = array_merge($p, $vp);
-        $sql = 'SELECT * FROM matches' . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY ' . ($st === 'scheduled' ? 'COALESCE(match_date, created_at) ASC' : 'updated_at DESC') . ' LIMIT 100';
+        $sql = 'SELECT * FROM matches' . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY ' . ($st === 'scheduled' ? 'COALESCE(match_date, created_at) ASC' : ($dated ? 'COALESCE(match_date, created_at) DESC' : 'updated_at DESC')) . ' LIMIT ' . ($dated ? 300 : 100);
         return ['matches' => match_summaries(rows($sql, $p))];
     }
 
@@ -555,6 +556,12 @@ function handle(string $action, array $in, ?array $u) {
         return dls_preview($m, max(1, int_in($in, 'overs', 1)));
     }
 
+    case 'match_leaders': {                           // v1.45: captain / keeper, any time (admin only once finished)
+        $m = load_match(int_in($in, 'id'));
+        db()->beginTransaction();
+        try { $r = set_match_leaders($m, $u, $in); db()->commit(); } catch (Throwable $e) { db()->rollBack(); throw $e; }
+        return $r;
+    }
     case 'match_scorer': {                            // the creator names who scores (by username), or takes it back
         $m = load_match(int_in($in, 'id'));
         if (!can_manage_match($m, $u)) fail('Only the match creator, team owners or the admin can choose the scorer', 403);

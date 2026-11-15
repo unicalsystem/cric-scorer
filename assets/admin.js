@@ -277,15 +277,17 @@ const Admin = (() => {
   A.playerDelete = id => confirmSheet('Delete this player?', 'They are removed from the team. Players who have played matches cannot be deleted.', 'Delete', () => run(async () => { await api('admin_player_delete', { id }); closeSheet(); toast('Deleted'); roster(); }));
 
   /* ---------- v1.43: Match setup - get matches ready before the day (scorer, playing teams, toss) ---------- */
-  let setupQ = '', setupTour = 0;
+  let setupQ = '', setupTour = 0, setupFrom = '', setupTo = '';
   async function setup(data) {
-    const d = data || await api('admin_setup_list', { q: setupQ, tournament_id: setupTour });
+    const d = data || await api('admin_setup_list', { q: setupQ, tournament_id: setupTour, date_from: setupFrom, date_to: setupTo });
     const ready = d.matches.filter(m => m.ready).length;
     const chip = (ok, label) => `<span class="role-tag" style="${ok ? 'background:var(--green-soft);color:var(--green)' : 'background:var(--red-soft);color:var(--red)'}">${ok ? '✓' : '✗'} ${label}</span>`;
     mount(frame(`<p class="small muted">Matches that have not started. Get each one ready ahead of time - name the <b>scorer</b> here, and tap <b>Open setup</b> to pick the <b>playing teams</b> and do the <b>toss</b> (any order, saved at once). A match is <b>Ready</b> when teams and toss are saved; the scorer then only picks the openers.</p>
       <form class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap" onsubmit="event.preventDefault();Admin.setupFind(this)">
         <input class="input grow" name="q" placeholder="Team, tournament or match no." value="${esc(setupQ)}" style="min-width:160px">
         <select class="input" name="t" style="width:auto"><option value="0">All tournaments</option>${d.tournaments.map(t => `<option value="${t.id}" ${+t.id === setupTour ? 'selected' : ''}>${esc(t.name)} (${t.n})</option>`).join('')}<option value="-1" ${setupTour === -1 ? 'selected' : ''}>Outside a tournament</option></select>
+        <label class="small muted">From <input class="input" type="date" name="f" value="${esc(setupFrom)}" style="width:auto"></label>
+        <label class="small muted">To <input class="input" type="date" name="d" value="${esc(setupTo)}" style="width:auto"></label>
         <button class="btn sm">Search</button></form>
       <div class="small" style="margin:0 2px 8px"><b>${ready}</b> of <b>${d.matches.length}</b> ready</div>
       ${d.matches.length ? d.matches.map(m => `<div class="card"><div class="row"><div class="grow"><b>${esc(m.t1)} <span class="muted">v</span> ${esc(m.t2)}</b>
@@ -296,7 +298,7 @@ const Admin = (() => {
           <button type="button" class="btn sm" onclick="go('#/match/${m.id}')">Open setup ›</button></form></div>`).join('')
         : '<div class="card empty"><div class="big">📋</div>No matches waiting to start.</div>'}`, 'Match setup'), 'more');
   }
-  A.setupFind = f => { setupQ = f.q.value.trim(); setupTour = +f.t.value; setup(); };
+  A.setupFind = f => { setupQ = f.q.value.trim(); setupTour = +f.t.value; setupFrom = f.f.value; setupTo = f.d.value; setup(); };
   A.setupScorer = (f, id) => run(async () => { const r = await api('match_scorer', { id, username: f.u.value.trim() }); toast(r.scorer ? `${r.scorer.display_name} will score this match ✓` : 'Scorer taken back'); setup(); }, f.querySelector('.btn'));
 
   /* ---------- v1.42: Match correction desk (a separate full-screen page, made for a laptop) ---------- */

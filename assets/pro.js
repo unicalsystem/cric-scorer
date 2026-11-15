@@ -267,6 +267,7 @@ App.matchMenu = () => {
     ${m.visibility === 'private' ? '' : `<button class="pbtn" onclick="App.overlayInfo()">📺 Score overlay for streaming</button>`}
     ${st.innings.length ? '<button class="pbtn" onclick="App.downloadCard()">🖼️ Download scorecard image</button>' : ''}
     ${S.user && S.user.is_admin && ['completed', 'abandoned'].includes(st.match.status) ? `<a class="pbtn" href="fix.php?m=${st.match.id}" target="_blank" rel="noopener">🛠 Correct balls, batters &amp; bowlers (admin desk)</a>` : ''}
+    ${(['completed', 'abandoned'].includes(st.match.status) ? (S.user && S.user.is_admin) : (st.is_owner || (S.user && S.user.is_admin))) ? '<button class="pbtn" onclick="App.leadersSheet()">👑 Captain &amp; keeper <span class="s">set or correct</span></button>' : ''}
     ${S.user && S.user.is_admin && st.innings.length ? '<button class="pbtn" onclick="App.pdfSheet()">📄 Full scorecard PDF <span class="s">every ball · share with teams</span></button>' : ''}
     ${st.is_owner ? '<button class="pbtn" style="color:var(--red)" onclick="App.deleteMatch()">🗑️ Delete match</button>' : ''}</div>`);
 };
@@ -708,17 +709,16 @@ xiSetup = () => {
     ${team.team.can_edit ? '<button class="btn sm light" onclick="App.quickPlayer()">+ New player</button>' : ''}</div>
     <div class="small muted" style="margin:-4px 0 8px">Tap <b>C</b> for the captain and <b>WK</b> for the keeper - used for captain stats and caught-behind.</div>
     ${team.players.length ? `<div class="plist">${list}</div>` : `<div class="card empty"><div class="big">🧢</div>This team has no players yet.${team.team.can_edit ? '<br>Tap <b>+ New player</b> to add some.' : ''}</div>`}
-    <button class="btn block" style="margin:8px 0 8px" onclick="App.saveXI(this)">Save playing teams</button>
+    <button class="btn block" style="margin:8px 0 8px" onclick="App.saveXI(this)">Save playing teams <span style="font-weight:600;opacity:.8">(can be part-way)</span></button>
     <button class="btn light block" style="margin:0 0 20px" onclick="App.setupBack()">← Back</button></div>`;
 };
 App.xiCap = id => { S.xiCap[S.xiTeam] = S.xiCap[S.xiTeam] === id ? null : id; drawMatch(false); };
 App.xiWk = id => { S.xiWk[S.xiTeam] = S.xiWk[S.xiTeam] === id ? null : id; drawMatch(false); };
 App.saveXI = btn => {
   const st = S.m, min = st.match.last_man_stands ? 1 : 2;
-  for (const t of [st.team1, st.team2]) if (S.xiSel[t.id].size < min) { S.xiTeam = t.id; drawMatch(false); return toast(`Pick at least ${min} players for ${t.name}`, true); }
   const xi = { [st.team1.id]: [...S.xiSel[st.team1.id]], [st.team2.id]: [...S.xiSel[st.team2.id]] };
   const pick = o => ({ [st.team1.id]: (o || {})[st.team1.id] || 0, [st.team2.id]: (o || {})[st.team2.id] || 0 });
-  run(async () => { if (await scoreAction('match_xi', { xi, captain: pick(S.xiCap), keeper: pick(S.xiWk) })) { S.setupView = 'auto'; drawMatch(false); toast('Playing teams saved ✓'); } }, btn);
+  run(async () => { if (await scoreAction('match_xi', { xi, captain: pick(S.xiCap), keeper: pick(S.xiWk) })) { S.setupView = 'auto'; drawMatch(false); const need = [st.team1, st.team2].filter(t => S.xiSel[t.id].size < min); toast(need.length ? 'Saved ✓ - ' + need.map(t => t.short_name).join(' & ') + ' still needs ' + min + '+ players' : 'Playing teams saved ✓'); } }, btn);
 };
 
 /* ---------- new match: ball type & round; details sheet: ball, round, bonus ---------- */
