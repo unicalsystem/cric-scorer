@@ -75,9 +75,12 @@ function tn_store(array $m, array $events, ?array $manual = null): array {
     $wasDone = $m['status'] === 'done';
     $status = $st['over'] ? 'done' : (($events || $m['status'] === 'live') ? 'live' : 'scheduled');
     if ($wasDone && ($status !== 'done' || (int)$st['winner'] !== (int)$m['winner'])) tn_ko_retract($m);
-    q('UPDATE tn_matches SET events=?, state=?, status=?, winner=?, summary=?, started_at=COALESCE(started_at, IF(?<>\'scheduled\', NOW(), NULL)),
-        finished_at=IF(?=\'done\', COALESCE(finished_at, NOW()), NULL) WHERE id=?',
-      [json_encode($events), json_encode($st), $status, $st['over'] ? $st['winner'] : null, tn_summary($st['sets'], $st['outcome']) ?: null, $status, $status, $m['id']]);
+    // Times are worked out here and sent as plain values, so the statement is the same on every MySQL / MariaDB version
+    $now = date('Y-m-d H:i:s');
+    $started = $status === 'scheduled' ? null : ($m['started_at'] ?: $now);
+    $finished = $status === 'done' ? ($m['finished_at'] ?: $now) : null;
+    q('UPDATE tn_matches SET events=?, state=?, status=?, winner=?, summary=?, started_at=?, finished_at=? WHERE id=?',
+      [json_encode($events), json_encode($st), $status, $st['over'] ? (int)$st['winner'] : null, tn_summary($st['sets'], $st['outcome']) ?: null, $started, $finished, $m['id']]);
     $m = row('SELECT * FROM tn_matches WHERE id=?', [$m['id']]);
     if ($status === 'done') tn_ko_advance($m);
     return $m;

@@ -247,6 +247,9 @@ try {
     http_response_code(500);
     error_log('RV Tennis: ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
     $msg = $e instanceof PDOException && !val_safe() ? 'The database is not reachable. Check the settings in config.local.php.' : 'Something went wrong. Please try again.';
-    echo json_encode(['error' => DEBUG ? $e->getMessage() : $msg]);
+    // A club admin sees the technical reason too, so a problem on the server can be reported and fixed quickly
+    $detail = $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine();
+    try { $adm = !empty(tn_user()['tn_admin']); } catch (Throwable $x) { $adm = false; }
+    echo json_encode(['error' => DEBUG || $adm ? "$msg ($detail)" : $msg]);
 }
 function val_safe(): bool { try { db()->query('SELECT 1'); return true; } catch (Throwable $e) { return false; } }
