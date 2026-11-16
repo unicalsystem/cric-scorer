@@ -37,7 +37,7 @@
 
   /* ---------- 1. match list ---------- */
   async function loadList() {
-    const d = await api('admin_fix_matches', { q: $('#q').value.trim(), tournament_id: +$('#tour').value, date_from: $('#dfrom').value, date_to: $('#dto').value });
+    const d = await api('admin_fix_matches', { q: $('#q').value.trim(), tournament_id: +$('#tour').value, date_from: $('#dfrom').value, date_to: $('#dto').value, all: $('#incl').checked ? 1 : 0 });
     F.list = d.matches;
     if (!F.tours.length && d.tournaments.length) {
       F.tours = d.tournaments;
@@ -124,8 +124,29 @@
     return h;
   }
 
+
+  /* ---------- v1.47: squad tools - add / create / rename players, before, during or after the match ---------- */
+  function squadBox(d) {
+    const m = d.match, canBalls = m.balls_open;
+    return `<div class="sect"><div class="box"><h3>Squad &amp; playing lists <small style="font-weight:600;color:var(--muted)">(admin - works before, during and after the match)</small></h3>
+      <p>Tap a squad player to put them on this match list. <span style="background:var(--amber-soft);padding:0 5px;border-radius:6px">Amber</span> = does not appear in any ball. ✏ fixes a name or role everywhere.${canBalls ? '' : ' Ball editing opens once the match is finished - the scorer owns the balls while it is live.'}</p>
+      ${d.teams.map(t => `<div style="margin:12px 0 4px"><b>${esc(t.name)}</b> <span class="small" style="color:var(--muted)">- ${t.players.filter(p => p.xi).length} on the match list · ${t.players.filter(p => !p.xi).length} in the squad</span>
+        <div class="small" style="margin:6px 0 2px;color:var(--muted)">On the match list</div>
+        <div class="xi">${t.players.filter(p => p.xi).map(p => `<span class="${p.played ? '' : 'np'}">${esc(p.name)} <button data-act="p-edit" data-id="${p.id}" title="Edit name / role">✏</button>${p.played ? '' : `<button data-act="xi-remove" data-id="${p.id}" data-name="${esc(p.name)}" title="Remove from the match list">remove</button>`}</span>`).join('') || '<span class="small">nobody yet</span>'}</div>
+        <div class="small" style="margin:8px 0 2px;color:var(--muted)">Rest of the squad - tap to add to the match</div>
+        <div class="xi">${t.players.filter(p => !p.xi).map(p => `<span><button data-act="xi-add" data-id="${p.id}" title="Add to the match list">+ ${esc(p.name)}</button> <button data-act="p-edit" data-id="${p.id}" title="Edit name / role">✏</button></span>`).join('') || '<span class="small">everyone is already on the list</span>'}</div>
+        <div class="form" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="text" id="np-name-${t.id}" maxlength="100" placeholder="New player name" style="flex:1;min-width:150px">
+          <select id="np-role-${t.id}"><option>Batter</option><option>Bowler</option><option>All-rounder</option><option>Wicket-keeper</option></select>
+          <label class="small"><input type="checkbox" id="np-add-${t.id}" checked> also add to this match</label><button class="btn light" data-act="p-new" data-team="${t.id}">➕ Add player</button></div></div>`).join('')}</div></div>`;
+  }
+
   function draw() {
     const d = F.d, m = d.match, I = inn();
+    if (!m.balls_open) {   // live / upcoming match: squad tools only
+      $('#main').innerHTML = `<div class="mhead"><div><h2>${esc(d.teams[0].name)} v ${esc(d.teams[1].name)}</h2><div class="sub">Match #${m.id} · ${esc(m.tournament || 'Friendly')} · ${esc(fmtDate(m.date))} · <b>${esc(m.status)}</b></div></div>
+        <div class="actions"><a class="btn light" href="./#/match/${m.id}" target="_blank" rel="noopener">Open in the app ↗</a></div></div>${squadBox(d)}`;
+      return;
+    }
     if (!I) { $('#main').innerHTML = `<div class="welcome"><h2>${esc(d.teams[0].name)} v ${esc(d.teams[1].name)}</h2><p>This match has no innings to correct.</p></div>`; return; }
     const overs = overList();
     const cur = overs.find(o => o.no === F.over) || overs[0] || { no: 0, balls: [] };
@@ -193,6 +214,7 @@
       <div class="legend">Runs = what the batters ran or hit (a wide with no runs is 0, the 1 for the wide is added by itself). <b style="color:var(--blue)">Blue</b> = changed, not saved yet. Over and ball numbers re-count by themselves when a ball is added, deleted or turned into a wide / no-ball.</div>
     </div></div>`;
 
+    const squad = squadBox(d);
     const tools = `<div class="sect grid2">
       <div class="box"><h3>Wrong player picked?</h3><p>Put the right player in for every ball in one go - e.g. the scorer picked Arjun but Rohan actually played.</p>
         <div class="form">
@@ -200,10 +222,8 @@
           <label>Right player (who really played)<select id="rp-to"><option value="">Choose the wrong player first</option></select></label>
           <label>Where<select id="rp-scope"><option value="0">The whole match</option>${d.innings.map(x => `<option value="${x.id}">${x.is_super ? 'Super over' : 'Innings ' + x.no} only (${esc(team(x.batting_team_id).name)} batting)</option>`).join('')}</select></label>
           <div class="checks"><label><input type="checkbox" id="rp-bat" checked> Batting</label><label><input type="checkbox" id="rp-bowl" checked> Bowling</label><label><input type="checkbox" id="rp-field" checked> Fielding</label></div>
-          <div><button class="btn" data-act="replace">Replace player</button></div></div></div>
-      <div class="box"><h3>Playing lists</h3><p>Players on the match list. <span style="background:var(--amber-soft);padding:0 5px;border-radius:6px">Amber</span> = does not appear in any ball; remove them only if they did not play.</p>
-        ${d.teams.map(t => `<div style="margin-bottom:10px"><b>${esc(t.name)}</b> <span class="small" style="color:var(--muted)">(${t.players.filter(p => p.xi).length})</span>
-          <div class="xi" style="margin-top:5px">${t.players.filter(p => p.xi).map(p => `<span class="${p.played ? '' : 'np'}">${esc(p.name)}${p.played ? '' : `<button data-act="xi-remove" data-id="${p.id}" data-name="${esc(p.name)}" title="Remove from the match list">remove</button>`}</span>`).join('')}</div></div>`).join('')}</div></div>`;
+          <div><button class="btn" data-act="replace">Replace player</button></div></div></div></div>`;
+
 
     const sc = draftScore();
     const bar = n ? `<div class="savebar"><div class="txt"><b>${n} unsaved change${n === 1 ? '' : 's'} in ${esc(team(bat).name)}'s innings</b>
@@ -212,7 +232,7 @@
         <button class="btn light" data-act="discard">Discard</button><button class="btn lime" data-act="save">Save changes</button></div>` : '';
 
     const y = $('#main').scrollTop;
-    $('#main').innerHTML = head + warns + inns + overTiles + table + tools + bar;
+    $('#main').innerHTML = head + warns + inns + overTiles + table + tools + squad + bar;
     $('#main').scrollTop = y;
   }
 
@@ -284,7 +304,7 @@
   /* ---------- events ---------- */
   document.addEventListener('change', e => {
     const t = e.target;
-    if (t.id === 'tour' || t.id === 'dfrom' || t.id === 'dto') { run(loadList); return; }
+    if (t.id === 'tour' || t.id === 'dfrom' || t.id === 'dto' || t.id === 'incl') { run(loadList); return; }
     if (t.id === 'note') { F.note = t.value; return; }
     if (t.id === 'over-bowler' && t.value) {
       const id = +t.value;
@@ -360,6 +380,22 @@
           () => { closeModal(); run(async () => { setData(await api('admin_fix_replace', { id: F.d.match.id, from, to, innings_id: scope, roles }), true); toast('Player replaced ✓'); loadList().catch(() => {}); }); }));
         break;
       }
+      case 'xi-add': run(async () => { setData(await api('admin_fix_xi_add', { id: F.d.match.id, player_id: +el.dataset.id }), true); toast('Added to the match list ✓'); loadList().catch(() => {}); }); break;
+      case 'p-new': {
+        const tid = +el.dataset.team, name = $('#np-name-' + tid).value.trim();
+        if (!name) { toast('Type the new player\'s name', true); break; }
+        run(async () => { setData(await api('admin_fix_player_add', { id: F.d.match.id, team_id: tid, name, role: $('#np-role-' + tid).value, add_to_match: $('#np-add-' + tid).checked ? 1 : 0 }), true); toast('Player added ✓'); loadList().catch(() => {}); });
+        break;
+      }
+      case 'p-edit': {
+        const pl = F.d.teams.flatMap(t => t.players).find(p => p.id === +el.dataset.id); if (!pl) break;
+        modal(`<h3>Edit player</h3><p>The name and role change everywhere this player appears (all matches, profile, stats).</p>
+          <div class="form"><label>Name<input type="text" id="pe-name" maxlength="100" value="${esc(pl.name)}"></label>
+          <label>Role<select id="pe-role">${['Batter', 'Bowler', 'All-rounder', 'Wicket-keeper'].map(r => `<option ${pl.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label></div>
+          <div class="row"><button class="btn light" data-act="modal-close">Cancel</button><button class="btn" data-act="p-edit-save" data-id="${pl.id}">Save</button></div>`);
+        break;
+      }
+      case 'p-edit-save': { const id = +el.dataset.id, name = $('#pe-name').value.trim(), role = $('#pe-role').value; closeModal(); run(async () => { setData(await api('admin_fix_player_edit', { id: F.d.match.id, player_id: id, name, role }), true); toast('Player updated ✓'); loadList().catch(() => {}); }); break; }
       case 'xi-remove': {
         const id = +el.dataset.id;
         guard(() => confirmBox('Remove from the match list?', `<b>${esc(el.dataset.name)}</b> does not appear in any ball. Remove them only if they did not play - this match will no longer count in their matches played.`, 'Remove',

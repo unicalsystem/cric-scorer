@@ -32,7 +32,7 @@ function fix_can_open(array $m): bool {
 }
 
 function fix_matches(array $in): array {
-    $where = ["(m.status='completed' OR (m.status='abandoned' AND EXISTS (SELECT 1 FROM innings i JOIN balls b ON b.innings_id=i.id WHERE i.match_id=m.id)))"];
+    $where = !empty($in['all']) ? ['1=1'] : ["(m.status='completed' OR (m.status='abandoned' AND EXISTS (SELECT 1 FROM innings i JOIN balls b ON b.innings_id=i.id WHERE i.match_id=m.id)))"];   // v1.47: 'all' also lists live and upcoming matches (squad tools only)
     $p = [];
     $tid = (int)($in['tournament_id'] ?? 0);
     if ($tid === -1) $where[] = 'm.tournament_id IS NULL';
@@ -69,11 +69,11 @@ function fix_matches(array $in): array {
 /** Everyone who can be chosen for a side: the players picked for the match, then the rest of the team's squad */
 function fix_side_players(int $matchId, int $teamId): array {
     $out = []; $seen = [];
-    foreach (rows('SELECT p.id, p.name, mp.bat_order FROM match_players mp JOIN players p ON p.id=mp.player_id WHERE mp.match_id=? AND mp.team_id=? ORDER BY mp.bat_order, p.id', [$matchId, $teamId]) as $p) {
-        $out[] = ['id' => (int)$p['id'], 'name' => $p['name'], 'xi' => true]; $seen[(int)$p['id']] = true;
+    foreach (rows('SELECT p.id, p.name, p.role, mp.bat_order FROM match_players mp JOIN players p ON p.id=mp.player_id WHERE mp.match_id=? AND mp.team_id=? ORDER BY mp.bat_order, p.id', [$matchId, $teamId]) as $p) {
+        $out[] = ['id' => (int)$p['id'], 'name' => $p['name'], 'role' => $p['role'], 'xi' => true]; $seen[(int)$p['id']] = true;
     }
-    foreach (rows('SELECT id, name FROM players WHERE team_id=? ORDER BY name', [$teamId]) as $p)
-        if (empty($seen[(int)$p['id']])) $out[] = ['id' => (int)$p['id'], 'name' => $p['name'], 'xi' => false];
+    foreach (rows('SELECT id, name, role FROM players WHERE team_id=? ORDER BY name', [$teamId]) as $p)
+        if (empty($seen[(int)$p['id']])) $out[] = ['id' => (int)$p['id'], 'name' => $p['name'], 'role' => $p['role'], 'xi' => false];
     return $out;
 }
 
@@ -97,7 +97,7 @@ function fix_ball_runs(array $b): int {
 
 function fix_match_data(int $matchId): array {
     $m = load_match($matchId);
-    if (!fix_can_open($m)) fail('Only finished matches can be corrected here. Finish (or abandon) the match in the app first.');
+    $open = fix_can_open($m);   // v1.47: live / upcoming matches open too, for the squad tools only (balls stay locked to the scorer)
     $bpo = (int)$m['balls_per_over'];
     $teams = [];
     foreach ([(int)$m['team1_id'], (int)$m['team2_id']] as $tid) {
@@ -128,7 +128,7 @@ function fix_match_data(int $matchId): array {
     $snaps = rows('SELECT id, who, note, score, created_at FROM fix_snapshots WHERE match_id=? ORDER BY id DESC LIMIT 15', [$matchId]);
     $first = row('SELECT id, who, note, score, created_at FROM fix_snapshots WHERE match_id=? ORDER BY id LIMIT 1', [$matchId]);
     return [
-        'match' => ['id' => (int)$m['id'], 'title' => $m['title'], 'round' => $m['round_name'] ?? null, 'date' => $m['match_date'], 'status' => $m['status'],
+        'match' => ['id' => (int)$m['id'], 'balls_open' => $open, 'title' => $m['title'], 'round' => $m['round_name'] ?? null, 'date' => $m['match_date'], 'status' => $m['status'],
             'result' => $m['result_text'], 'winner_team_id' => nint($m['winner_team_id']), 'result_method' => $m['result_method'],
             'overs' => (int)$m['overs'], 'bpo' => $bpo, 'players_per_side' => (int)$m['players_per_side'], 'extra_players' => !empty($m['extra_players']),
             'max_overs_bowler' => (int)$m['max_overs_bowler'], 'last_man_stands' => !empty($m['last_man_stands']), 'test' => is_test($m),
@@ -527,7 +527,6 @@ function fix_replace_player(array $m, ?array $u, array $in): array {
 
 /** Take a player who did not play off the match list */
 function fix_xi_remove(array $m, ?array $u, array $in): array {
-    if (!fix_can_open($m)) fail('Only finished matches can be corrected here');
     $mid = (int)$m['id']; $pid = (int)($in['player_id'] ?? 0);
     $mp = row('SELECT mp.*, p.name FROM match_players mp JOIN players p ON p.id=mp.player_id WHERE mp.match_id=? AND mp.player_id=?', [$mid, $pid]);
     if (!$mp) fail('That player is not on the match list');
@@ -535,12 +534,71 @@ function fix_xi_remove(array $m, ?array $u, array $in): array {
     if (val('SELECT 1 FROM innings_batters ib JOIN innings i ON i.id=ib.innings_id WHERE i.match_id=? AND ib.player_id=?', [$mid, $pid])) fail($mp['name'] . ' is in the batting order of this match');
     $min = $m['last_man_stands'] ? 1 : 2;
     if ((int)val('SELECT COUNT(*) FROM match_players WHERE match_id=? AND team_id=?', [$mid, $mp['team_id']]) <= $min) fail('A side needs at least ' . $min . ' player(s)');
-    $before = fix_score_line($mid);
-    $snap = fix_snapshot($m, $u, '');
-    q('DELETE FROM match_players WHERE match_id=? AND player_id=?', [$mid, $pid]);
-    fix_refresh_match($mid);
-    fix_finish($m, $u, $snap, $mp['name'] . ' removed from the match list (did not play)', $before);
+    if ($m['status'] === 'live' && val('SELECT 1 FROM innings i WHERE i.match_id=? AND i.status=\'live\' AND (i.striker_id=? OR i.non_striker_id=? OR i.bowler_id=?)', [$mid, $pid, $pid, $pid])) fail($mp['name'] . ' is at the crease or bowling right now');
+    if (fix_can_open($m)) {
+        $before = fix_score_line($mid);
+        $snap = fix_snapshot($m, $u, '');
+        q('DELETE FROM match_players WHERE match_id=? AND player_id=?', [$mid, $pid]);
+        fix_refresh_match($mid);
+        fix_finish($m, $u, $snap, $mp['name'] . ' removed from the match list (did not play)', $before);
+    } else {
+        q('DELETE FROM match_players WHERE match_id=? AND player_id=?', [$mid, $pid]);
+        match_log($m, 'Admin: ' . $mp['name'] . ' removed from the match list', $u);
+    }
     return fix_match_data($mid);
+}
+
+/** v1.47: add a squad player to the match list - any time (before, during or after the match) */
+function fix_xi_add_row(array $m, int $tid, int $pid): string {
+    $mid = (int)$m['id'];
+    $pl = row('SELECT id, name FROM players WHERE id=? AND team_id=?', [$pid, $tid]);
+    if (!$pl) fail('That player is not in this team');
+    if (val('SELECT 1 FROM match_players WHERE match_id=? AND player_id=?', [$mid, $pid])) fail($pl['name'] . ' is already on the match list');
+    $ord = 1 + (int)val('SELECT COALESCE(MAX(bat_order),0) FROM match_players WHERE match_id=? AND team_id=?', [$mid, $tid]);
+    q('INSERT INTO match_players (match_id, team_id, player_id, bat_order, is_captain, is_keeper) VALUES (?,?,?,?,0,0)', [$mid, $tid, $pid, $ord]);
+    return $pl['name'];
+}
+function fix_xi_add(array $m, ?array $u, array $in): array {
+    $mid = (int)$m['id']; $pid = (int)($in['player_id'] ?? 0);
+    $tid = (int)val('SELECT team_id FROM players WHERE id=?', [$pid]);
+    if (!in_array($tid, [(int)$m['team1_id'], (int)$m['team2_id']], true)) fail('That player is not in either team of this match');
+    $open = fix_can_open($m); $snap = $open ? fix_snapshot($m, $u, '') : 0; $before = $open ? fix_score_line($mid) : '';
+    $name = fix_xi_add_row($m, $tid, $pid);
+    if ($open) { fix_refresh_match($mid); fix_finish($m, $u, $snap, $name . ' added to the match list', $before); }
+    else match_log($m, 'Admin: ' . $name . ' added to the match list', $u);
+    return fix_match_data($mid);
+}
+/** v1.47: new player in a team's squad (and optionally straight onto the match list) */
+function fix_player_add(array $m, ?array $u, array $in): array {
+    $mid = (int)$m['id']; $tid = (int)($in['team_id'] ?? 0);
+    if (!in_array($tid, [(int)$m['team1_id'], (int)$m['team2_id']], true)) fail('Pick one of the two teams');
+    $name = trim(preg_replace('/\s+/', ' ', (string)($in['name'] ?? '')));
+    if ($name === '' || mb_strlen($name) > 100) fail('Enter the player name');
+    if (val('SELECT 1 FROM players WHERE team_id=? AND LOWER(name)=LOWER(?)', [$tid, $name])) fail($name . ' is already in this team - add them to the match list instead');
+    $role = in_array($in['role'] ?? '', ['Batter', 'Bowler', 'All-rounder', 'Wicket-keeper'], true) ? $in['role'] : 'Batter';
+    q('INSERT INTO players (name, role, batting_style, team_id) VALUES (?,?,?,?)', [$name, $role, 'Right-hand bat', $tid]);
+    $pid = lastId();
+    if (!empty($in['add_to_match'])) {
+        $open = fix_can_open($m); $snap = $open ? fix_snapshot($m, $u, '') : 0; $before = $open ? fix_score_line($mid) : '';
+        fix_xi_add_row($m, $tid, $pid);
+        if ($open) { fix_refresh_match($mid); fix_finish($m, $u, $snap, $name . ' added to the squad and the match list', $before); }
+        else match_log($m, 'Admin: ' . $name . ' added to the squad and the match list', $u);
+    } else match_log($m, 'Admin: ' . $name . ' added to the squad of ' . team_name($tid), $u);
+    return fix_match_data($mid);
+}
+/** v1.47: correct a player's name / role (changes everywhere - it is the same player record) */
+function fix_player_edit(array $m, ?array $u, array $in): array {
+    $pid = (int)($in['player_id'] ?? 0);
+    $pl = row('SELECT * FROM players WHERE id=?', [$pid]);
+    if (!$pl || !in_array((int)$pl['team_id'], [(int)$m['team1_id'], (int)$m['team2_id']], true)) fail('That player is not in either team of this match');
+    $name = trim(preg_replace('/\s+/', ' ', (string)($in['name'] ?? $pl['name'])));
+    if ($name === '' || mb_strlen($name) > 100) fail('Enter the player name');
+    if (val('SELECT 1 FROM players WHERE team_id=? AND id<>? AND LOWER(name)=LOWER(?)', [$pl['team_id'], $pid, $name])) fail('Another player in this team already has that name');
+    $role = in_array($in['role'] ?? '', ['Batter', 'Bowler', 'All-rounder', 'Wicket-keeper'], true) ? $in['role'] : $pl['role'];
+    q('UPDATE players SET name=?, role=? WHERE id=?', [$name, $role, $pid]);
+    if ($name !== $pl['name']) q('UPDATE teams SET captain=? WHERE id=? AND captain=?', [$name, $pl['team_id'], $pl['name']]);
+    match_log($m, 'Admin: player ' . $pl['name'] . ($name !== $pl['name'] ? ' renamed to ' . $name : ' updated'), $u);
+    return fix_match_data((int)$m['id']);
 }
 
 function fix_undo(array $m, ?array $u, array $in): array {
@@ -574,6 +632,9 @@ function fix_action(string $action, ?array $u, array $in) {
         case 'admin_fix_apply':   $out = fix_apply($m, $u, $in); break;
         case 'admin_fix_replace': $out = fix_replace_player($m, $u, $in); break;
         case 'admin_fix_xi_remove': $out = fix_xi_remove($m, $u, $in); break;
+        case 'admin_fix_xi_add':    $out = fix_xi_add($m, $u, $in); break;
+        case 'admin_fix_player_add': $out = fix_player_add($m, $u, $in); break;
+        case 'admin_fix_player_edit': $out = fix_player_edit($m, $u, $in); break;
         case 'admin_fix_undo':    $out = fix_undo($m, $u, $in); break;
         default: fail('Unknown action', 404);
     }

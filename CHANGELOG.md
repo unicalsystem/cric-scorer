@@ -4,6 +4,11 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.47.0 - 16 November 2026
+- **Squad tools on the correction desk** (admin, `/fix.php?m=ID`): add a squad player to the match list, create a brand-new player (optionally straight onto the match), and fix a player's name or role (✏) - before, during or after the match. Totals, stats and the result are rebuilt for finished matches, and every change is saved as an undo point.
+- The desk now also opens **live and upcoming** matches (tick "Include live & upcoming matches" in the list, or open the match number directly) with the squad tools only - ball editing stays locked until the match is finished so it can never clash with the scorer.
+- Removing a player who is at the crease or bowling right now is blocked.
+
 ## 1.46.0 - 15 November 2026
 - **Printable paper score sheets, pre-filled for each match** (admin): Admin → 📋 Match setup → "🖨 Sheet" per match, or "Print score sheets for these matches" for everything listed (use the date filter to pick a day). Each match gets, for both innings, a landscape A4 batting/bowling sheet and an over-by-over ball grid. Match, date, venue, overs, teams, toss and the batting order are filled in from the app. "Blank sheet" prints an empty set.
 - Fixes on the old sheet: readable table headings, Extras/Total no longer overflow, tables fill the page, 7 bowler rows, ball-by-ball grid added.
