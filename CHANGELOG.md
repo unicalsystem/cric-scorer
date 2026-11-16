@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.47.1 - 16 November 2026
+- **RV Tennis** - a separate tennis scoring app for RV Sports Club now ships in the `rvtennis/` folder (served at rvtennis.cricscorerapp.com). It shares this database and the same accounts (Google, WhatsApp, username), and keeps its own data in `tn_` tables that it creates on first open. Nothing in Cric-Scorer itself changes. See `rvtennis/README.md`.
+
 ## 1.47.0 - 16 November 2026
 - **Squad tools on the correction desk** (admin, `/fix.php?m=ID`): add a squad player to the match list, create a brand-new player (optionally straight onto the match), and fix a player's name or role (✏) - before, during or after the match. Totals, stats and the result are rebuilt for finished matches, and every change is saved as an undo point.
 - The desk now also opens **live and upcoming** matches (tick "Include live & upcoming matches" in the list, or open the match number directly) with the squad tools only - ball editing stays locked until the match is finished so it can never clash with the scorer.
