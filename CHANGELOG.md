@@ -4,6 +4,9 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.47.2 - 16 November 2026
+- **RV Badminton** - a separate badminton scoring app for RV Sports Club now ships in the `rvbadminton/` folder (served at rvbadminton.cricscorerapp.com), following the club's badminton rule sheet (21-point rally scoring, 30-point cap, single-game league, best-of-3 play-offs). Same accounts and admins as RV Tennis; its own data lives in `bd_` tables created on first open. Nothing in Cric-Scorer itself changes. See `rvbadminton/README.md`.
+
 ## 1.47.1 - 16 November 2026
 - **RV Tennis** - a separate tennis scoring app for RV Sports Club now ships in the `rvtennis/` folder (served at rvtennis.cricscorerapp.com). It shares this database and the same accounts (Google, WhatsApp, username), and keeps its own data in `tn_` tables that it creates on first open. Nothing in Cric-Scorer itself changes. See `rvtennis/README.md`.
 
