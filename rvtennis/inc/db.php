@@ -150,14 +150,15 @@ function tn_http(string $url, ?string $body = null, array $headers = []): array 
 }
 
 /* ---------- Sign in with Google ---------- */
+function tn_google_client(): string { return trim((string)TN_GOOGLE_CLIENT_ID) ?: trim((string)GOOGLE_CLIENT_ID); }
 function tn_google(array $in): array {
-    if (trim((string)GOOGLE_CLIENT_ID) === '') fail('Google sign-in is not set up on this server');
+    if (tn_google_client() === '') fail('Google sign-in is not set up on this server');
     $cred = (string)($in['credential'] ?? '');
     if ($cred === '' || strlen($cred) > 4096) fail('Google sign-in failed - please try again');
     $t = tn_http(GOOGLE_TOKENINFO_URL . '?id_token=' . rawurlencode($cred))['json'];
     if (!$t) fail('Could not reach Google to check your sign-in. Please try again.');
     if (!empty($t['error']) || !empty($t['error_description']) || (int)($t['exp'] ?? 0) < time()) fail('Google sign-in expired - please try again');
-    if (($t['aud'] ?? '') !== GOOGLE_CLIENT_ID || !in_array($t['iss'] ?? '', ['accounts.google.com', 'https://accounts.google.com'], true)) fail('Google sign-in could not be verified');
+    if (($t['aud'] ?? '') !== tn_google_client() || !in_array($t['iss'] ?? '', ['accounts.google.com', 'https://accounts.google.com'], true)) fail('Google sign-in could not be verified');
     if (!in_array($t['email_verified'] ?? false, [true, 'true'], true) || empty($t['sub']) || empty($t['email'])) fail('Your Google e-mail address is not verified');
     $email = strtolower((string)$t['email']); $name = trim((string)($t['name'] ?? ''));
     $u = row('SELECT * FROM users WHERE google_sub=?', [(string)$t['sub']]);

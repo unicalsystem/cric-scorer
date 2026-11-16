@@ -30,7 +30,7 @@ try {
     switch ($a) {
     case 'boot':
         $out = ['user' => tn_public_user($u), 'version' => TN_VERSION, 'club' => TN_CLUB, 'name' => TN_NAME, 'main_site' => TN_MAIN_SITE,
-            'google_client_id' => trim((string)GOOGLE_CLIENT_ID) ?: null, 'whatsapp' => tn_wa_enabled() || DEBUG,
+            'google_client_id' => tn_google_client() ?: null, 'whatsapp' => tn_wa_enabled() || DEBUG,
             'presets' => array_map(fn($p) => $p['label'], TN_PRESETS), 'logo' => is_file(__DIR__ . '/assets/logo.png') ? 'assets/logo.png?v=' . filemtime(__DIR__ . '/assets/logo.png') : null];
         break;
 

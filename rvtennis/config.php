@@ -34,6 +34,10 @@ defined('TN_ADMIN_MOBILES') || define('TN_ADMIN_MOBILES', '');
 defined('TN_ADMIN_HASHES')  || define('TN_ADMIN_HASHES',
     '8804e551627d3129d3833401ffc2e6c48f1a7ddef39e6342ac5567a3f17823e3,7fd9fda90023c424c77d120501930b9679c25cf9d093c3ce35fb15b2b3d9f8e5');
 
+/* Sign in with Google: tennis has its own OAuth client ("rvtennis.cricscorerapp.com" in Google Cloud Console, whose
+   Authorised JavaScript origin is this site). A client ID is public - the browser sees it - so it can live here.
+   Set TN_GOOGLE_CLIENT_ID to '' in config.local.php to fall back to Cric-Scorer's GOOGLE_CLIENT_ID. */
+defined('TN_GOOGLE_CLIENT_ID')    || define('TN_GOOGLE_CLIENT_ID', '730719546750-li3ks3hkr887cbp577q7o1hivus9o8fo.apps.googleusercontent.com');
 defined('GOOGLE_CLIENT_ID')       || define('GOOGLE_CLIENT_ID', '');
 defined('GOOGLE_TOKENINFO_URL')   || define('GOOGLE_TOKENINFO_URL', 'https://oauth2.googleapis.com/tokeninfo');
 defined('WHATSAPP_TOKEN')         || define('WHATSAPP_TOKEN', '');
@@ -46,5 +50,5 @@ defined('DEFAULT_COUNTRY_CODE')   || define('DEFAULT_COUNTRY_CODE', '91');
 defined('OTP_MINUTES')            || define('OTP_MINUTES', 15);
 defined('DEBUG')                  || define('DEBUG', false);
 
-define('TN_VERSION', '1.0.0');
+define('TN_VERSION', '1.0.1');
 date_default_timezone_set(defined('APP_TIMEZONE') ? APP_TIMEZONE : 'Asia/Kolkata');

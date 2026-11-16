@@ -17,8 +17,8 @@ Point-by-point tennis scoring for RV Sports Club, served at https://rvtennis.cri
   settings, add `rvtennis/config.local.php` - anything defined there wins.
 - **Accounts are shared with Cric-Scorer** (`users`, `user_tokens`, `otp_tokens`): Sign in with Google, a WhatsApp
   code, or a Cric-Scorer username and password.
-  - Google: add `https://rvtennis.cricscorerapp.com` to the OAuth client's *Authorised JavaScript origins*
-    (Google Cloud Console → APIs & Services → Credentials). Until then the Google button shows an origin error.
+  - Google: tennis uses its own OAuth client (`TN_GOOGLE_CLIENT_ID` in `config.php`), whose *Authorised JavaScript
+    origin* is `https://rvtennis.cricscorerapp.com`. Cric-Scorer's `GOOGLE_CLIENT_ID` is not used here.
   - WhatsApp: uses the same Meta template as Cric-Scorer; members type the 6-digit code.
 - **Club admins** are the accounts whose verified Google e-mail or verified WhatsApp number matches
   `TN_ADMIN_HASHES` in `config.php` (SHA-256, so the values are not readable here), or `TN_ADMIN_EMAILS` /

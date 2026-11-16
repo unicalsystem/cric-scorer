@@ -211,11 +211,11 @@ async function vMatch(id) {
       }).join('');
     });
     if (pbp) pbp += '<p class="small muted" style="margin-top:10px">Filled dot: point won by the server. Ring: won by the receiver.</p>';
-    view().innerHTML = `<div class="board"><div class="ctx"><span>${esc(m.doubles ? 'Doubles' : 'Singles')}${m.court ? ', ' + esc(m.court) : ''}</span><span>${status}</span></div>${bl(0)}${bl(1)}</div>
-      ${result}${flag}${setup}${court}
-      <div class="tabs2" role="tablist"><button role="tab" aria-selected="${tab === 'stats'}" data-tab="stats">Stats</button><button role="tab" aria-selected="${tab === 'pbp'}" data-tab="pbp">Game by game</button></div>
+    view().innerHTML = `<div class="mgrid"><div><div class="board"><div class="ctx"><span>${esc(m.doubles ? 'Doubles' : 'Singles')}${m.court ? ', ' + esc(m.court) : ''}</span><span>${status}</span></div>${bl(0)}${bl(1)}</div>
+      ${result}${flag}${setup}${court}</div>
+      <div><div class="tabs2" role="tablist"><button role="tab" aria-selected="${tab === 'stats'}" data-tab="stats">Stats</button><button role="tab" aria-selected="${tab === 'pbp'}" data-tab="pbp">Game by game</button></div>
       <div class="${tab === 'pbp' ? 'pbp' : ''}">${tab === 'stats' ? stats : (pbp || '<p class="empty">Games appear here as they are played.</p>')}</div>
-      ${!can && !S.user && live ? '<p class="small muted" style="margin-top:18px">Scoring this match? <a href="#/me">Sign in</a>.</p>' : ''}`;
+      ${!can && !S.user && live ? '<p class="small muted" style="margin-top:18px">Scoring this match? <a href="#/me">Sign in</a>.</p>' : ''}</div></div>`;
   };
   const act = async (a, body) => {
     if (busy) return; busy = true;
@@ -474,6 +474,7 @@ async function route() {
   const h = location.hash.replace(/^#\/?/, ''), [p, id] = h.split('/');
   const routes = { '': vHome, m: () => vMatch(+id), new: vNew, tours: vTours, t: () => vTour(+id), 'tour-new': vTourNew, players: vPlayers, p: () => vPlayer(+id), me: vMe };
   const fn = routes[p] || vHome;
+  $('#app').toggleAttribute('data-wide', ['', 'm', 't', 'tours', 'players', 'p'].includes(routes[p] ? p : ''));   // lists and matches use the whole screen on a laptop or TV
   if ((p === 'new' || p === 'tour-new') && !S.user) S.after = '#/' + p;
   try { await fn(); window.scrollTo(0, 0); }
   catch (e) { setTop(TN.name, TN.club, { back: p ? '#/' : null }); view().innerHTML = `<div class="card"><h2 class="sec">This page could not load</h2><p class="muted">${esc(e.message)}</p><p style="margin-top:12px"><button class="btn" onclick="location.reload()">Try again</button></p></div>`; }
