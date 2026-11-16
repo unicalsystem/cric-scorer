@@ -38,7 +38,18 @@ function tn_schema(): void {
     static $done = false;
     if ($done) return;
     $done = true;
-    if (val("SHOW TABLES LIKE 'tn_matches'")) return;
+    if (!val("SHOW TABLES LIKE 'tn_matches'")) tn_schema_v1();
+    if (!val("SHOW TABLES LIKE 'tn_teams'")) tn_schema_teams();
+}
+/** v1.1: club teams (with their logos) and which team each player belongs to */
+function tn_schema_teams(): void {
+    db()->exec("CREATE TABLE IF NOT EXISTS tn_teams (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(60) NOT NULL, logo VARCHAR(80) NULL, color CHAR(7) NOT NULL DEFAULT '#0f2440',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_team (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    if (!val("SHOW COLUMNS FROM tn_players LIKE 'team_id'")) db()->exec("ALTER TABLE tn_players ADD COLUMN team_id INT NULL AFTER gender, ADD INDEX idx_team (team_id)");
+    foreach ([['Phoenix', 'phoenix.jpg', '#d6281c'], ['Rangers', 'rangers.jpg', '#d9a400'], ['Titans', 'titans.jpg', '#1c7fd6'], ['Warriors', 'warriors.jpg', '#e8641b']] as $t)
+        q('INSERT IGNORE INTO tn_teams (name, logo, color) VALUES (?,?,?)', ['' . $t[0], 'assets/teams/' . $t[1], $t[2]]);
+}
+function tn_schema_v1(): void {
     $e = ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4';
     // The shared account tables exist already on the club server; these lines only matter on a fresh database.
     db()->exec("CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50) NOT NULL UNIQUE, password_hash VARCHAR(255) NOT NULL,

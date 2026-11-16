@@ -10,6 +10,29 @@ function tn_player(string $name, ?int $by = null): int {
     q('INSERT INTO tn_players (name, created_by) VALUES (?,?)', [$name, $by]);
     return lastId();
 }
+/** player id → team id, for everyone who is in a team (one small query per request) */
+function tn_team_map(bool $fresh = false): array {
+    static $map = null;
+    if ($map === null || $fresh) { $map = []; foreach (rows('SELECT id, team_id FROM tn_players WHERE team_id IS NOT NULL') as $r) $map[(int)$r['id']] = (int)$r['team_id']; }
+    return $map;
+}
+/** The team a side plays for: every player on the side is in the same team */
+function tn_side_team($p1, $p2): ?int {
+    $map = tn_team_map();
+    $a = $map[(int)$p1] ?? null;
+    if (!$p2) return $a;
+    return $a !== null && $a === ($map[(int)$p2] ?? null) ? $a : null;
+}
+function tn_teams(): array {
+    return array_map(fn($t) => ['id' => (int)$t['id'], 'name' => $t['name'], 'logo' => $t['logo'], 'color' => $t['color']], rows('SELECT * FROM tn_teams ORDER BY name'));
+}
+/** Put players into a team; with $onlyEmpty, players who already have a team keep it */
+function tn_assign_team(array $playerIds, ?int $teamId, bool $onlyEmpty = false): void {
+    if ($teamId !== null && !val('SELECT 1 FROM tn_teams WHERE id=?', [$teamId])) fail('That team was not found');
+    foreach (array_filter($playerIds) as $pid) q('UPDATE tn_players SET team_id=? WHERE id=?' . ($onlyEmpty ? ' AND team_id IS NULL' : ''), [$teamId, $pid]);
+    tn_team_map(true);
+}
+
 /** "Asha / Meera" → [id, id]; "Asha" → [id, null] */
 function tn_side(string $text, bool $doubles, ?int $by): array {
     $parts = array_values(array_filter(array_map('trim', preg_split('#\s*(?:/|&|\+|,| and )\s*#i', $text)), 'strlen'));
@@ -42,7 +65,8 @@ function tn_match_out(array $m, ?array $u, bool $full = true): array {
         'winner' => $m['winner'] === null ? null : (int)$m['winner'], 'summary' => $m['summary'], 'court' => $m['court'],
         'tour_id' => $m['tour_id'] ? (int)$m['tour_id'] : null, 'round' => $m['round'] === null ? null : (int)$m['round'], 'grp' => $m['grp'] === null ? null : (int)$m['grp'],
         'sched_at' => $m['sched_at'], 'started_at' => $m['started_at'], 'finished_at' => $m['finished_at'], 'rev' => $m['updated_at'],
-        'players' => [[$m['a1'] ? (int)$m['a1'] : null, $m['a2'] ? (int)$m['a2'] : null], [$m['b1'] ? (int)$m['b1'] : null, $m['b2'] ? (int)$m['b2'] : null]]];
+        'players' => [[$m['a1'] ? (int)$m['a1'] : null, $m['a2'] ? (int)$m['a2'] : null], [$m['b1'] ? (int)$m['b1'] : null, $m['b2'] ? (int)$m['b2'] : null]],
+        'teams' => [$m['a1'] ? tn_side_team($m['a1'], $m['a2']) : null, $m['b1'] ? tn_side_team($m['b1'], $m['b2']) : null]];
     $st = $m['state'] ? json_decode($m['state'], true) : null;
     if (!$full) {   // list rows carry just the score line
         if ($st) $o['mini'] = ['sets' => $st['sets'], 'games' => $st['games'], 'label' => $st['label'], 'server' => $st['server'][0] ?? null, 'tb' => $st['tb']];

@@ -16,6 +16,9 @@ DirectoryIndex index.php
   RewriteRule ^m/([0-9]+)/?$ index.php?m=$1 [L,QSA]
 </IfModule>
 <IfModule mod_headers.c>
+  <Files "sw.js">
+    Header set Cache-Control "no-cache"
+  </Files>
   Header always set X-Content-Type-Options "nosniff"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>

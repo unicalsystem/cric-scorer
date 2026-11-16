@@ -17,6 +17,18 @@ const IC = {
   mark: '<svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="#dcf03a"/><path d="M6.500 8.500c6 5 6 18 0 23M33.500 8.500c-6 5-6 18 0 23" fill="none" stroke="#0f2440" stroke-width="2.600" stroke-linecap="round"/></svg>',
 };
 
+/* ---------- install as an app ---------- */
+let installEvt = null;
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; document.querySelectorAll('[data-install]').forEach(b => b.hidden = false); });
+window.addEventListener('appinstalled', () => { installEvt = null; document.querySelectorAll('[data-install]').forEach(b => b.hidden = true); toast('RV Tennis is installed'); });
+function install() {
+  if (installEvt) { installEvt.prompt(); installEvt.userChoice.finally(() => { installEvt = null; }); return; }
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  sheet(`<h2>Add RV Tennis to your home screen</h2><p class="muted">${ios ? 'In Safari, tap the Share button, then “Add to Home Screen”.' : 'Open your browser menu (⋮) and choose “Install app” or “Add to Home screen”.'} It then opens full screen like any other app.</p><div class="btns"><button class="btn pri" data-close>OK</button></div>`);
+}
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+
 /* ---------- plumbing ---------- */
 async function api(a, body, params) {
   const qs = new URLSearchParams({ a, ...(params || {}) });
@@ -66,6 +78,11 @@ const when = s => { if (!s) return ''; const d = new Date(s.replace(' ', 'T')); 
   return (today ? 'Today' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })) + ', ' + d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }); };
 const day = s => s ? new Date(s.replace(' ', 'T')).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
 
+/* ---------- teams ---------- */
+const team = id => (S.boot.teams || []).find(t => t.id === id) || null;
+const badge = (id, cls = '') => { const t = team(id); return t ? `<img class="tb ${cls}" src="${esc(t.logo)}" alt="${esc(t.name)}" title="${esc(t.name)}" loading="lazy">` : ''; };
+const teamOptions = sel => `<option value="">No team</option>` + (S.boot.teams || []).map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+
 /* ---------- score pieces ---------- */
 function setCell(s, side, cls = 's') {
   const mine = side ? s.b : s.a, theirs = side ? s.a : s.b;
@@ -84,7 +101,7 @@ function matchRow(m, extra = '') {
     let cells = mini.sets.map(s => setCell(s, side)).join('');
     if (live) cells += `<span class="s hi">${mini.games[side]}</span><span class="pt">${mini.label[side] || (mini.label[1 - side] === 'Ad' ? '–' : '0')}</span>`;
     if (done && !mini.sets.length && m.winner === side) cells = `<span class="small muted">${esc(m.summary || '')}</span>`;
-    return `<div class="line ${cls}"><span class="srv ${live && mini.server === side ? 'on' : ''}"></span><span class="nm ${nm ? '' : 'tbd'}">${esc(nm || 'To be decided')}</span>${cells}${done ? `<span class="tick">${m.winner === side ? '✓' : ''}</span>` : ''}</div>`;
+    return `<div class="line ${cls}"><span class="srv ${live && mini.server === side ? 'on' : ''}"></span>${badge((m.teams || [])[side])}<span class="nm ${nm ? '' : 'tbd'}">${esc(nm || 'To be decided')}</span>${cells}${done ? `<span class="tick">${m.winner === side ? '✓' : ''}</span>` : ''}</div>`;
   };
   return `<a class="mrow" href="#/m/${m.id}"><div class="meta"><span>${esc(ctx || (m.doubles ? 'Doubles' : 'Singles'))}</span><span>${right}</span></div>${line(0)}${line(1)}${extra}</a>`;
 }
@@ -96,9 +113,13 @@ async function vHome() {
   const d = await api('home');
   const sec = (title, list, empty) => list.length || empty ? `<h2 class="sec">${title} <span class="n">${list.length || ''}</span></h2>${list.map(m => matchRow(m)).join('') || `<p class="empty">${empty}</p>`}` : '';
   const none = !d.live.length && !d.next.length && !d.done.length;
-  view().innerHTML = (none ? `<div class="card"><h2 class="sec">No matches yet</h2><p class="muted">Start the first one: tap “New match”, type the players' names, and score each point by tapping the winner's side of the court.</p></div>` :
+  const hero = TN.logo ? `<div class="hero"><img src="${esc(TN.logo)}" alt="${esc(TN.club)}"><div class="t"><b>${esc(TN.name)}</b><span>${esc(TN.club)}, Nacharam</span>
+      <button class="btn sm" data-install ${standalone() ? 'hidden' : ''}>Install the app</button></div></div>` : '';
+  const strip = (S.boot.teams || []).length ? `<div class="tstrip">${S.boot.teams.map(t => `<a href="#/team/${t.id}"><img src="${esc(t.logo)}" alt=""><span>${esc(t.name)}</span></a>`).join('')}</div>` : '';
+  view().innerHTML = hero + strip + (none ? `<div class="card"><h2 class="sec">No matches yet</h2><p class="muted">Start the first one: tap “New match”, type the players' names, and score each point by tapping the winner's side of the court.</p></div>` :
     sec('Live now', d.live, '') + sec('Up next', d.next, '') + sec('Results', d.done, d.live.length || d.next.length ? '' : 'No finished matches yet.'))
     + `<a class="btn fab" href="#/new">${IC.plus} New match</a>`;
+  const ib = $('[data-install]'); if (ib) ib.onclick = install;
   S.poll = setInterval(async () => { if (document.hidden) return; try { const n = await api('home'); if (JSON.stringify(n) !== JSON.stringify(d) && location.hash.replace(/^#?\/?$/, '') === '') route(); } catch (e) { /* next time */ } }, 15000);
 }
 
@@ -116,8 +137,11 @@ async function vNew() {
   let dbl = false;
   const draw = () => {
     const inp = (id, ph) => `<input id="${id}" list="pl" autocomplete="off" autocapitalize="words" placeholder="${ph}" maxlength="80" value="${esc($('#' + id) ? $('#' + id).value : '')}">`;
-    $('#sides').innerHTML = `<label class="f">${dbl ? 'Pair A' : 'Player A'}${inp('a1', 'Name')}${dbl ? inp('a2', 'Partner') : ''}</label>
-      <label class="f">${dbl ? 'Pair B' : 'Player B'}${inp('b1', 'Name')}${dbl ? inp('b2', 'Partner') : ''}</label>`;
+    const tsel = id => (S.boot.teams || []).length ? `<select id="${id}" aria-label="Team">${teamOptions($('#' + id) ? +$('#' + id).value : 0).replace('No team', 'Team (optional)')}</select>` : '';
+    $('#sides').innerHTML = `<label class="f">${dbl ? 'Pair A' : 'Player A'}${inp('a1', 'Name')}${dbl ? inp('a2', 'Partner') : ''}${tsel('ta')}</label>
+      <label class="f">${dbl ? 'Pair B' : 'Player B'}${inp('b1', 'Name')}${dbl ? inp('b2', 'Partner') : ''}${tsel('tb')}</label>`;
+    const known = Object.fromEntries(pl.map(p => [p.name.toLowerCase(), p.team_id]));   // a known player brings their team along
+    [['a1', 'ta'], ['b1', 'tb']].forEach(([i, t]) => { if ($('#' + t)) $('#' + i).onchange = () => { const k = known[$('#' + i).value.trim().toLowerCase()]; if (k) $('#' + t).value = k; }; });
   };
   view().innerHTML = `<datalist id="pl">${pl.map(p => `<option value="${esc(p.name)}">`).join('')}</datalist>
     <div class="seg" role="group" aria-label="Match type"><button id="sg" aria-pressed="true">Singles</button><button id="db" aria-pressed="false">Doubles</button></div>
@@ -133,7 +157,7 @@ async function vNew() {
     const v = id => ($('#' + id) ? $('#' + id).value.trim() : '');
     if (!v('a1') || !v('b1') || (dbl && (!v('a2') || !v('b2')))) return toast('Fill in every player\'s name', true);
     const r = await api('match_new', { doubles: dbl, a: dbl ? v('a1') + ' / ' + v('a2') : v('a1'), b: dbl ? v('b1') + ' / ' + v('b2') : v('b1'),
-      format: readFormat(), first_srv: +$('#first').value, court: v('court') });
+      format: readFormat(), first_srv: +$('#first').value, court: v('court'), team_a: +v('ta') || 0, team_b: +v('tb') || 0 });
     go('#/m/' + r.id);
   });
 }
@@ -162,7 +186,7 @@ async function vMatch(id) {
     setTop(`${m.a} v ${m.b}`, [m.tour, m.round_name, m.format_label].filter(Boolean).join(', '), { back: back(), right: shareBtn + (can ? `<button class="ib" id="menu" aria-label="Match options">${IC.more}</button>` : '') });
     const nSets = st.sets.length;
     const bl = side => `<div class="bl ${st.over && st.winner === side ? 'won' : ''}"><span class="srv ${live && st.server && st.server[0] === side ? 'on' : ''}"></span>
-      <span class="nm">${esc(side ? m.b : m.a)}</span>${st.sets.map(s => setCell(s, side)).join('')}
+      ${badge(m.teams[side], 'lg')}<span class="nm">${esc(side ? m.b : m.a)}${team(m.teams[side]) ? `<small>${esc(team(m.teams[side]).name)}</small>` : ''}</span>${st.sets.map(s => setCell(s, side)).join('')}
       ${live ? `<span class="s cur">${st.games[side]}</span><span class="pt">${st.label[side] || (st.label[1 - side] === 'Ad' ? '' : '0')}</span>` : ''}</div>`;
     const status = m.status === 'live' ? '<span class="live">Live</span>' : m.status === 'done' ? 'Finished ' + day(m.finished_at) : (m.sched_at ? when(m.sched_at) : 'Not started');
     let flag = '';
@@ -174,7 +198,7 @@ async function vMatch(id) {
       else if (st.tb && st.pts[0] + st.pts[1] === 0) flag = `<div class="flag">${st.mtb ? `Match tiebreak, first to ${st.format.final_to}` : `Tiebreak, first to ${st.format.tb_to}`}</div>`;
       else flag = `<div class="flag">${nSets ? `Set ${nSets + 1}` : 'First set'}${m.court ? ', ' + esc(m.court) : ''}</div>`;
     }
-    const result = st.over ? `<div class="result"><div class="who">${esc(st.winner ? m.b : m.a)} won</div><div class="sum">${esc(m.summary || '')}${st.outcome === 'ret' ? ' (opponent retired)' : st.outcome === 'wo' ? ' (walkover)' : ''}</div></div>` : '';
+    const result = st.over ? `<div class="result">${badge(m.teams[st.winner], 'xl')}<div class="who">${esc(st.winner ? m.b : m.a)} won</div><div class="sum">${esc(m.summary || '')}${st.outcome === 'ret' ? ' (opponent retired)' : st.outcome === 'wo' ? ' (walkover)' : ''}</div></div>` : '';
     // the court: side B plays from the top, side A from the bottom
     let court = '';
     const waiting = !m.a || !m.b;
@@ -182,7 +206,7 @@ async function vMatch(id) {
       const srv = st.server, sName = m.names[srv[0]][srv[1]] || (srv[0] ? m.b : m.a);
       const right = st.court === 'deuce';                       // server stands to the right of the centre mark, seen from their own end
       const x = srv[0] === 0 ? (right ? 68 : 32) : (right ? 32 : 68);
-      const half = (side, cls) => `<button class="half ${cls}" data-w="${side}"><span class="nm">${esc(side ? m.b : m.a)}</span><span class="do">${srv[0] === side ? esc(sName) + ' serving' : 'Tap: point won'}</span></button>`;
+      const half = (side, cls) => `<button class="half ${cls}" data-w="${side}">${badge(m.teams[side], 'ct')}<span class="nm">${esc(side ? m.b : m.a)}</span><span class="do">${srv[0] === side ? esc(sName) + ' serving' : 'Tap: point won'}</span></button>`;
       court = `<div class="court" id="court"><div class="in">${half(1, 't')}<div class="net"></div>${half(0, 'b')}</div><span class="ball ${srv[0] ? 't' : 'b'}" style="left:calc(${x}% - 10px)"></span></div>
         <div class="acts"><button class="btn" data-k="ace">Ace</button><button class="btn" data-k="df">Double fault</button><button class="btn" id="undo" ${st.n || st.over ? '' : 'disabled'}>Undo</button></div>`;
     } else if (can && st.over) court = `<div class="acts" style="grid-template-columns:1fr"><button class="btn" id="undo">${st.manual ? 'Clear this result' : 'Undo the last point'}</button></div>`;
@@ -223,6 +247,7 @@ async function vMatch(id) {
     try { m = (await api(a, { id, n: m.state.n + (m.state.outcome ? 1 : 0), ...body })).match; if (navigator.vibrate) navigator.vibrate(12); if (a === 'point') say(callText(m)); }
     catch (e) { toast(e.message, true); if (e.status === 401) S.user = null; try { m = (await api('match', null, { id })).match; } catch (x) { /* keep what we have */ } }
     busy = false; paint();
+    if (a === 'point' || a === 'undo') view().querySelectorAll('.bl .pt').forEach(el => el.classList.add('pop'));
   };
   view().onclick = e => {
     const t = e.target.closest('button,a'); if (!t) return;
@@ -361,7 +386,8 @@ async function vTourNew() {
 async function vPlayers() {
   setTop('Players', TN.club); setTabs('players');
   const p = (await api('players')).players;
-  view().innerHTML = (p.length ? `<div class="card plist" style="padding:2px 14px">${p.map((x, i) => `<a href="#/p/${x.id}"><span class="rk">${x.played ? i + 1 : ''}</span><span class="nm">${esc(x.name)}</span>
+  const seg = (S.boot.teams || []).length ? `<div class="seg" style="margin-bottom:12px;max-width:560px"><button aria-pressed="true">Players</button><button aria-pressed="false" onclick="location.hash='#/teams'">Teams</button></div>` : '';
+  view().innerHTML = seg + (p.length ? `<div class="card plist" style="padding:2px 14px">${p.map((x, i) => `<a href="#/p/${x.id}"><span class="rk">${x.played ? i + 1 : ''}</span>${badge(x.team_id)}<span class="nm">${esc(x.name)}</span>
       <span class="wl">${x.played ? `${x.won} won, ${x.played - x.won} lost` : '<span class="muted" style="font-weight:500">No matches yet</span>'}</span></a>`).join('')}</div>`
     : '<div class="card"><h2 class="sec">No players yet</h2><p class="muted">Players are added automatically when you type their name into a new match or tournament.</p></div>')
     + (S.user ? `<button class="btn fab" id="p-add">${IC.plus} Add player</button>` : '');
@@ -369,20 +395,53 @@ async function vPlayers() {
 }
 function playerSheet(p) {
   const d = sheet(`<h2>${p ? 'Edit player' : 'Add a player'}</h2><label class="f">Name<input id="p-name" maxlength="80" autocapitalize="words" value="${esc(p ? p.name : '')}"></label>
+    ${(S.boot.teams || []).length ? `<label class="f">Team<select id="p-t">${teamOptions(p ? p.team_id : 0)}</select></label>` : ''}
     <label class="f">Plays in<select id="p-g"><option value="">Not set</option><option value="M" ${p && p.gender === 'M' ? 'selected' : ''}>Men's events</option><option value="F" ${p && p.gender === 'F' ? 'selected' : ''}>Women's events</option></select></label>
     <div class="btns"><button class="btn" data-close>Cancel</button><button class="btn pri" id="p-save">${p ? 'Save' : 'Add player'}</button></div>
     ${p ? '<p style="margin-top:14px"><button class="btn danger wide sm" id="p-del">Delete player</button></p>' : ''}`);
-  $('#p-save', d).onclick = () => run(async () => { await api('player_save', { id: p ? p.id : 0, name: $('#p-name', d).value, gender: $('#p-g', d).value }); d.close(); route(); });
+  $('#p-save', d).onclick = () => run(async () => { await api('player_save', { id: p ? p.id : 0, name: $('#p-name', d).value, gender: $('#p-g', d).value, ...($('#p-t', d) ? { team_id: +$('#p-t', d).value || 0 } : {}) }); d.close(); route(); });
   if (p) $('#p-del', d).onclick = () => run(async () => { await api('player_delete', { id: p.id }); d.close(); go('#/players'); });
 }
 async function vPlayer(id) {
   setTabs(null);
   const d = await api('player', null, { id }), r = d.record;
   setTop(d.player.name, 'Player record', { back: '#/players', right: d.player.can_edit ? `<button class="ib" id="p-edit" aria-label="Edit player">${IC.more}</button>` : '' });
-  view().innerHTML = `<div class="stats3"><div><b>${r.played}</b><span>Played</span></div><div><b>${r.won}</b><span>Won</span></div><div><b>${r.played ? Math.round(100 * r.won / r.played) + '%' : '–'}</b><span>Win rate</span></div></div>
+  const tm = team(d.player.team_id);
+  view().innerHTML = (tm ? `<a class="tline" href="#/team/${tm.id}">${badge(tm.id, 'lg')}<span>Plays for <b>${esc(tm.name)}</b></span></a>` : '') + `<div class="stats3"><div><b>${r.played}</b><span>Played</span></div><div><b>${r.won}</b><span>Won</span></div><div><b>${r.played ? Math.round(100 * r.won / r.played) + '%' : '–'}</b><span>Win rate</span></div></div>
     <div class="stats3"><div><b>${r.singles[0]}–${r.singles[1]}</b><span>Singles</span></div><div><b>${r.doubles[0]}–${r.doubles[1]}</b><span>Doubles</span></div><div><b>${r.aces}</b><span>Aces in singles</span></div></div>
     <h2 class="sec">Matches</h2>${d.matches.map(m => matchRow(m)).join('') || '<p class="empty">No matches played yet.</p>'}`;
   const b = $('#p-edit'); if (b) b.onclick = () => playerSheet(d.player);
+}
+
+/* ---------- Teams ---------- */
+async function vTeams() {
+  setTop('Teams', TN.club); setTabs('players');
+  const t = (await api('teams')).teams;
+  view().innerHTML = `<div class="seg" style="margin-bottom:12px;max-width:560px"><button aria-pressed="false" onclick="location.hash='#/players'">Players</button><button aria-pressed="true">Teams</button></div>
+    <div class="tgrid">${t.map(x => `<a class="tcard" href="#/team/${x.id}" style="--tc:${esc(x.color)}"><img src="${esc(x.logo)}" alt="${esc(x.name)} logo"><b>${esc(x.name)}</b>
+      <span>${x.players} ${x.players === 1 ? 'player' : 'players'}</span><span class="wl">${x.played ? `${x.won} won, ${x.played - x.won} lost` : 'No matches yet'}</span></a>`).join('')}</div>
+    <p class="small muted" style="margin-top:12px">A match counts for a team when every player on that side belongs to it.</p>`;
+}
+async function vTeam(id) {
+  setTabs(null);
+  const d = await api('team', null, { id }), t = d.team;
+  setTop(t.name, TN.club, { back: '#/teams' });
+  view().innerHTML = `<div class="thero" style="--tc:${esc(t.color)}"><img src="${esc(t.logo)}" alt="${esc(t.name)} logo"><div><b>${esc(t.name)}</b><span>${esc(TN.club)}, Nacharam</span></div></div>
+    <div class="stats3"><div><b>${t.players}</b><span>Players</span></div><div><b>${t.won}</b><span>Matches won</span></div><div><b>${t.played - t.won}</b><span>Lost</span></div></div>
+    <h2 class="sec">Players <span class="n">${d.players.length || ''}</span></h2>
+    ${d.players.length ? `<div class="card plist" style="padding:2px 14px">${d.players.map(p => `<a href="#/p/${p.id}"><span class="nm">${esc(p.name)}</span><span class="wl">${p.played ? `${p.won} won, ${p.played - p.won} lost` : '<span class="muted" style="font-weight:500">No matches yet</span>'}</span>${t.can_edit ? `<button class="btn sm" data-out="${p.id}" aria-label="Remove ${esc(p.name)} from ${esc(t.name)}">Remove</button>` : ''}</a>`).join('')}</div>` : `<p class="empty">No players in ${esc(t.name)} yet.</p>`}
+    ${t.can_edit ? `<p style="margin-top:12px"><button class="btn" id="t-add">${IC.plus} Add players to ${esc(t.name)}</button></p>` : ''}
+    <h2 class="sec">Matches</h2>${d.matches.map(m => matchRow(m)).join('') || '<p class="empty">No matches played yet.</p>'}`;
+  view().onclick = e => {
+    const out = e.target.closest('[data-out]');
+    if (out) { e.preventDefault(); return run(async () => { await api('team_players', { id, remove: +out.dataset.out }); S.boot.teams = (await api('boot')).teams; route(); }); }
+    if (e.target.closest('#t-add')) {
+      const s2 = sheet(`<h2>Add players to ${esc(t.name)}</h2><label class="f">Names, one per line<textarea id="tp" autocapitalize="words" spellcheck="false" placeholder="Asha\nRavi\nKiran"></textarea>
+        <span class="hint">New names are added as players. A player already in another team moves to ${esc(t.name)}.</span></label>
+        <div class="btns"><button class="btn" data-close>Cancel</button><button class="btn pri" id="tp-go">Add players</button></div>`);
+      $('#tp-go', s2).onclick = () => run(async () => { const r = await api('team_players', { id, names: $('#tp', s2).value }); s2.close(); toast(`${r.added} ${r.added === 1 ? 'player' : 'players'} added to ${t.name}`); route(); });
+    }
+  };
 }
 
 /* ---------- Me / sign in ---------- */
@@ -393,7 +452,7 @@ async function vMe() {
   if (S.user) return vAccount();
   setTop('Sign in', TN.club);
   const b = S.boot;
-  view().innerHTML = `<div class="signin"><h2>Sign in to score</h2><p class="lead">Anyone can follow matches. Sign in to start a match and keep score. Your Cric-Scorer account works here too.</p>
+  view().innerHTML = `<div class="signin">${TN.logo ? `<img class="brand" src="${esc(TN.logo)}" alt="${esc(TN.club)}">` : ''}<h2>Sign in to score</h2><p class="lead">Anyone can follow matches. Sign in to start a match and keep score. Your Cric-Scorer account works here too.</p>
     ${b.google_client_id ? '<div id="gbtn"></div><div class="or">or</div>' : ''}
     ${b.whatsapp ? `<div id="wa"><label class="f" style="margin-top:0">Mobile number on WhatsApp<input id="wa-mobile" type="tel" inputmode="tel" autocomplete="tel" placeholder="98765 43210"></label>
       <p style="margin-top:12px"><button class="btn wa wide" id="wa-go">Send me a code on WhatsApp</button></p></div>` : ''}
@@ -456,9 +515,11 @@ async function vAccount() {
   view().innerHTML = `<div class="card"><div class="row"><div class="grow"><b style="font-size:18px">${esc(u.name)}</b><br><span class="muted small">@${esc(u.username)}${u.mobile ? ', ' + esc(u.mobile) : ''}${u.google ? ', Google linked' : ''}</span></div></div>
       <label class="chk"><input type="checkbox" id="voice" ${S.voice ? 'checked' : ''}><span>Read the score aloud after each point <span class="muted small">(on this phone)</span></span></label></div>
     ${admins}
+    ${standalone() ? '' : `<h2 class="sec">App</h2><div class="card install"><img src="assets/icon-192.png" alt=""><div class="grow"><b>RV Tennis on your home screen</b><br><span class="muted small">Opens full screen, like any other app.</span></div><button class="btn sm pri" id="inst">Install</button></div>`}
     <h2 class="sec">More</h2><div class="card"><p><a href="${esc(S.boot.main_site)}" target="_blank" rel="noopener"><b>Cric-Scorer</b></a> <span class="muted">cricket scoring for the club, same account</span></p>
       <p class="small muted" style="margin-top:8px"><a href="${esc(S.boot.main_site)}/terms" target="_blank" rel="noopener">Terms of Use</a>, <a href="${esc(S.boot.main_site)}/privacy" target="_blank" rel="noopener">Privacy Policy</a>. RV Tennis ${esc(TN.v)}</p></div>
     <p style="margin-top:16px"><button class="btn wide" id="out">Sign out</button></p>`;
+  if ($('#inst')) $('#inst').onclick = install;
   $('#voice').onchange = e => { S.voice = e.target.checked; localStorage.setItem('tn_voice', S.voice ? '1' : '0'); if (S.voice) say('Score announcements on'); };
   $('#out').onclick = () => run(async () => { await api('logout', {}); S.user = null; try { google.accounts.id.disableAutoSelect(); } catch (e) { /* not loaded */ } toast('Signed out'); go('#/'); });
   if (u.admin) {
@@ -472,9 +533,9 @@ async function route() {
   clearInterval(S.poll); S.poll = null;
   view().onclick = null; $('#top').onclick = null;
   const h = location.hash.replace(/^#\/?/, ''), [p, id] = h.split('/');
-  const routes = { '': vHome, m: () => vMatch(+id), new: vNew, tours: vTours, t: () => vTour(+id), 'tour-new': vTourNew, players: vPlayers, p: () => vPlayer(+id), me: vMe };
+  const routes = { '': vHome, m: () => vMatch(+id), new: vNew, tours: vTours, t: () => vTour(+id), 'tour-new': vTourNew, players: vPlayers, p: () => vPlayer(+id), teams: vTeams, team: () => vTeam(+id), me: vMe };
   const fn = routes[p] || vHome;
-  $('#app').toggleAttribute('data-wide', ['', 'm', 't', 'tours', 'players', 'p'].includes(routes[p] ? p : ''));   // lists and matches use the whole screen on a laptop or TV
+  $('#app').toggleAttribute('data-wide', ['', 'm', 't', 'tours', 'players', 'p', 'teams', 'team'].includes(routes[p] ? p : ''));   // lists and matches use the whole screen on a laptop or TV
   if ((p === 'new' || p === 'tour-new') && !S.user) S.after = '#/' + p;
   try { await fn(); window.scrollTo(0, 0); }
   catch (e) { setTop(TN.name, TN.club, { back: p ? '#/' : null }); view().innerHTML = `<div class="card"><h2 class="sec">This page could not load</h2><p class="muted">${esc(e.message)}</p><p style="margin-top:12px"><button class="btn" onclick="location.reload()">Try again</button></p></div>`; }
@@ -482,8 +543,9 @@ async function route() {
 (async function start() {
   setTop(TN.name, TN.club);
   try { S.boot = await api('boot'); S.user = S.boot.user; if (S.boot.logo) TN.logo = S.boot.logo; }
-  catch (e) { view().innerHTML = `<div class="card"><h2 class="sec">RV Tennis could not start</h2><p class="muted">${esc(e.message)}</p><p style="margin-top:12px"><button class="btn" onclick="location.reload()">Try again</button></p></div>`; return; }
+  catch (e) { const sp = $('#splash'); if (sp) sp.remove(); view().innerHTML = `<div class="card"><h2 class="sec">RV Tennis could not start</h2><p class="muted">${esc(e.message)}</p><p style="margin-top:12px"><button class="btn" onclick="location.reload()">Try again</button></p></div>`; return; }
   if (TN.open && !location.hash) history.replaceState(null, '', new URL('./#/m/' + TN.open, document.baseURI));
   window.addEventListener('hashchange', route);
-  route();
+  await route();
+  const sp = $('#splash'); if (sp) { sp.classList.add('out'); setTimeout(() => sp.remove(), 400); }
 })();

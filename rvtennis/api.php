@@ -13,7 +13,7 @@ try {
         if (stripos((string)($_SERVER['CONTENT_TYPE'] ?? ''), 'application/json') === false) fail('Bad request');
         $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
     }
-    $reads = ['boot', 'home', 'match', 'tours', 'tour', 'players', 'player', 'admins'];
+    $reads = ['boot', 'home', 'match', 'tours', 'tour', 'players', 'player', 'admins', 'teams', 'team'];
     if (!$post && !in_array($a, $reads, true)) fail('Bad request', 405);
     tn_schema();
     $u = tn_user();
@@ -31,7 +31,7 @@ try {
     case 'boot':
         $out = ['user' => tn_public_user($u), 'version' => TN_VERSION, 'club' => TN_CLUB, 'name' => TN_NAME, 'main_site' => TN_MAIN_SITE,
             'google_client_id' => tn_google_client() ?: null, 'whatsapp' => tn_wa_enabled() || DEBUG,
-            'presets' => array_map(fn($p) => $p['label'], TN_PRESETS), 'logo' => is_file(__DIR__ . '/assets/logo.png') ? 'assets/logo.png?v=' . filemtime(__DIR__ . '/assets/logo.png') : null];
+            'presets' => array_map(fn($p) => $p['label'], TN_PRESETS), 'teams' => tn_teams(), 'logo' => is_file(__DIR__ . '/assets/logo.png') ? 'assets/logo.png?v=' . filemtime(__DIR__ . '/assets/logo.png') : null];
         break;
 
     /* ----- sign-in ----- */
@@ -66,6 +66,9 @@ try {
           [$u['id'], $doubles ? 1 : 0, $a1, $a2, $b1, $b2, tn_side_name($a1, $a2), tn_side_name($b1, $b2), json_encode(tn_format($in['format'] ?? 'bo3')),
            !empty($in['first_srv']) ? 1 : 0, str_in($in, 'court', 40) ?: null, $when]);
         $out = ['id' => lastId()];
+        // a team picked on the form goes to the players of that side who are not in a team yet
+        if (int_in($in, 'team_a')) tn_assign_team([$a1, $a2], int_in($in, 'team_a'), true);
+        if (int_in($in, 'team_b')) tn_assign_team([$b1, $b2], int_in($in, 'team_b'), true);
         break;
     case 'point':
         $m = $mscore(int_in($in, 'id'));
@@ -175,13 +178,13 @@ try {
 
     /* ----- players ----- */
     case 'players':
-        $out = ['players' => rows("SELECT p.id, p.name, p.gender,
+        $out = ['players' => rows("SELECT p.id, p.name, p.gender, p.team_id,
             (SELECT COUNT(*) FROM tn_matches m WHERE m.status='done' AND p.id IN (m.a1, m.a2, m.b1, m.b2)) played,
             (SELECT COUNT(*) FROM tn_matches m WHERE m.status='done' AND ((m.winner=0 AND p.id IN (m.a1, m.a2)) OR (m.winner=1 AND p.id IN (m.b1, m.b2)))) won
             FROM tn_players p ORDER BY won DESC, played, p.name")];
         break;
     case 'player':
-        $p = row('SELECT id, name, gender FROM tn_players WHERE id=?', [(int)($_GET['id'] ?? 0)]);
+        $p = row('SELECT id, name, gender, team_id FROM tn_players WHERE id=?', [(int)($_GET['id'] ?? 0)]);
         if (!$p) fail('That player was not found', 404);
         $ms = rows("$list WHERE ? IN (m.a1, m.a2, m.b1, m.b2) AND m.status IN ('done','live') ORDER BY COALESCE(m.finished_at, m.updated_at) DESC LIMIT 60", [$p['id']]);
         $rec = ['played' => 0, 'won' => 0, 'singles' => [0, 0], 'doubles' => [0, 0], 'aces' => 0, 'df' => 0];
@@ -207,6 +210,7 @@ try {
             foreach (['a', 'b'] as $s) foreach (rows("SELECT id, {$s}1 p1, {$s}2 p2 FROM tn_matches WHERE ? IN ({$s}1, {$s}2)", [$id]) as $m) q("UPDATE tn_matches SET {$s}_name=? WHERE id=?", [tn_side_name((int)$m['p1'], $m['p2'] ? (int)$m['p2'] : null), $m['id']]);
             foreach (rows('SELECT id, p1, p2 FROM tn_entries WHERE ? IN (p1, p2)', [$id]) as $e) q('UPDATE tn_entries SET name=? WHERE id=?', [tn_side_name((int)$e['p1'], $e['p2'] ? (int)$e['p2'] : null), $e['id']]);
         } else { q('INSERT INTO tn_players (name, gender, created_by) VALUES (?,?,?)', [$name, $g, $u['id']]); $id = lastId(); }
+        if (array_key_exists('team_id', $in)) tn_assign_team([$id], int_in($in, 'team_id') ?: null);
         $out = ['id' => $id];
         break;
     case 'player_delete':
@@ -215,6 +219,41 @@ try {
         if (val('SELECT 1 FROM tn_matches WHERE ? IN (a1, a2, b1, b2) LIMIT 1', [$id]) || val('SELECT 1 FROM tn_entries WHERE ? IN (p1, p2) LIMIT 1', [$id])) fail('This player has matches, so they cannot be deleted. Rename them instead.');
         q('DELETE FROM tn_players WHERE id=?', [$id]);
         $out = ['ok' => true];
+        break;
+
+    /* ----- teams ----- */
+    case 'teams':
+    case 'team':
+        $teams = [];
+        foreach (tn_teams() as $t) $teams[$t['id']] = $t + ['players' => 0, 'played' => 0, 'won' => 0];
+        foreach (tn_team_map() as $tid) if (isset($teams[$tid])) $teams[$tid]['players']++;
+        $done = rows("$list WHERE m.status='done' ORDER BY m.finished_at DESC");
+        foreach ($done as $m) foreach ([0, 1] as $side) {
+            $tid = $side ? tn_side_team($m['b1'], $m['b2']) : tn_side_team($m['a1'], $m['a2']);
+            if ($tid === null || !isset($teams[$tid])) continue;
+            $teams[$tid]['played']++; if ((int)$m['winner'] === $side) $teams[$tid]['won']++;
+        }
+        if ($a === 'teams') { $t = array_values($teams); usort($t, fn($x, $y) => [$y['won'], $x['played'], $x['name']] <=> [$x['won'], $y['played'], $y['name']]); $out = ['teams' => $t]; break; }
+        $tid = (int)($_GET['id'] ?? 0);
+        if (!isset($teams[$tid])) fail('That team was not found', 404);
+        $mine = fn($m) => in_array($tid, [tn_side_team($m['a1'], $m['a2']), tn_side_team($m['b1'], $m['b2'])], true);
+        $ms = array_merge(rows("$list WHERE m.status='live' ORDER BY m.updated_at DESC"), $done);
+        $out = ['team' => $teams[$tid] + ['can_edit' => (bool)($u['tn_admin'] ?? false)],
+            'players' => rows("SELECT p.id, p.name,
+                (SELECT COUNT(*) FROM tn_matches m WHERE m.status='done' AND p.id IN (m.a1, m.a2, m.b1, m.b2)) played,
+                (SELECT COUNT(*) FROM tn_matches m WHERE m.status='done' AND ((m.winner=0 AND p.id IN (m.a1, m.a2)) OR (m.winner=1 AND p.id IN (m.b1, m.b2)))) won
+                FROM tn_players p WHERE p.team_id=? ORDER BY won DESC, p.name", [$tid]),
+            'matches' => $mini(array_slice(array_values(array_filter($ms, $mine)), 0, 40))];
+        break;
+    case 'team_players':   // admin: add a list of names to a team (new players are created), or take one out
+        tn_require_admin();
+        $tid = int_in($in, 'id');
+        if (int_in($in, 'remove')) { tn_assign_team([int_in($in, 'remove')], null); $out = ['ok' => true]; break; }
+        $names = array_values(array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string)($in['names'] ?? ''))), 'strlen'));
+        if (!$names) fail('Type at least one name');
+        if (count($names) > 100) fail('Add up to 100 players at a time');
+        tn_assign_team(array_map(fn($n) => tn_player($n, (int)$u['id']), $names), $tid);
+        $out = ['added' => count($names)];
         break;
 
     /* ----- club admins ----- */

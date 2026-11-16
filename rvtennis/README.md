@@ -23,7 +23,8 @@ Point-by-point tennis scoring for RV Sports Club, served at https://rvtennis.cri
 - **Club admins** are the accounts whose verified Google e-mail or verified WhatsApp number matches
   `TN_ADMIN_HASHES` in `config.php` (SHA-256, so the values are not readable here), or `TN_ADMIN_EMAILS` /
   `TN_ADMIN_MOBILES` in `config.local.php`. Admins can add more admins in the app (Me → Club admins).
-- **Club logo**: upload it as `rvtennis/assets/logo.png` (square works best) and it replaces the ball mark in the header.
+- **Club logo**: `assets/logo.png` (header, home banner, sign-in, opening screen); the app icons `assets/icon-*.png` and
+  the share image `assets/og.jpg` are made from it. `sw.js` + `manifest.json` make the site installable as an app.
 
 ## Code
 `inc/engine.php` scoring rules (a match is a format + a list of points, replayed on every change) ·

@@ -26,11 +26,15 @@ $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
 <meta property="og:title" content="<?= $h($title) ?>">
 <meta property="og:description" content="<?= $h($desc) ?>">
 <meta property="og:type" content="website">
-<meta property="og:image" content="<?= $h(TN_URL) ?>/assets/icon-512.png">
+<meta property="og:image" content="<?= $h(TN_URL) ?>/assets/og.jpg">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#0f2440">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="icon" href="assets/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="<?= $h(TN_NAME) ?>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -39,6 +43,7 @@ $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
 <link rel="stylesheet" href="assets/app.css?v=<?= $v ?>">
 </head>
 <body>
+<div id="splash"><?php if ($logo): ?><img src="<?= $h($logo) ?>" alt="<?= $h(TN_CLUB) ?>" width="640" height="454"><?php endif; ?><b><?= $h(TN_NAME) ?></b><span>Live tennis scoring</span><i></i></div>
 <div id="app">
   <header id="top"></header>
   <main id="view" tabindex="-1"><p class="wait">Loading…</p></main>
