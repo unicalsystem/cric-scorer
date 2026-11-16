@@ -74,7 +74,13 @@ function tn_match_out(array $m, ?array $u, bool $full = true): array {
         return $o;
     }
     $f = tn_format($m['format']);
-    $o['state'] = $st ?: tn_replay($f, (bool)$m['doubles'], (int)$m['first_srv'], [])->state();
+    $evs = json_decode((string)$m['events'], true) ?: [];
+    if ($st && !isset($st['acts']) && empty($st['manual'])) $st = null;   // saved by an older version: work it out again
+    $o['state'] = $st ?: tn_replay($f, (bool)$m['doubles'], (int)$m['first_srv'], $evs)->state();
+    $o['ev'] = count($evs);                                          // the phone sends this back with every change (see "point")
+    $last = $evs ? end($evs) : null;
+    $o['last_k'] = $last && isset($last['w']) && !isset($last['t']) ? (string)($last['k'] ?? '') : null;   // null = the last event is not a point
+    $o['format'] = $f;
     $o['format_label'] = tn_format_label($f);
     $o['first_srv'] = (int)$m['first_srv'];
     $o['can_score'] = tn_can_score($m, $u);
@@ -97,7 +103,7 @@ function tn_store(array $m, array $events, ?array $manual = null): array {
     $f = tn_format($m['format']);
     $st = $manual ?: tn_replay($f, (bool)$m['doubles'], (int)$m['first_srv'], $events)->state();
     $wasDone = $m['status'] === 'done';
-    $status = $st['over'] ? 'done' : (($events || $m['status'] === 'live') ? 'live' : 'scheduled');
+    $status = $st['over'] ? 'done' : (($st['acts'] ?? 0) > 0 ? 'live' : 'scheduled');
     if ($wasDone && ($status !== 'done' || (int)$st['winner'] !== (int)$m['winner'])) tn_ko_retract($m);
     // Times are worked out here and sent as plain values, so the statement is the same on every MySQL / MariaDB version
     $now = date('Y-m-d H:i:s');
@@ -141,6 +147,9 @@ function tn_tour_create(array $in, array $u): int {
     $kind = ($in['kind'] ?? '') === 'ko' ? 'ko' : 'rr';
     $doubles = !empty($in['doubles']);
     $f = tn_format($in['format'] ?? 'bo3');
+    // knockout: the last rounds may use their own format (1 = final only, 2 = semi-finals and final, 3 = from the quarter-finals)
+    $finalRounds = $kind === 'ko' ? max(0, min(3, int_in($in, 'final_rounds'))) : 0;
+    $ff = $finalRounds ? tn_format($in['final_format'] ?? $f) : $f;
     $lines = is_array($in['entries'] ?? null) ? $in['entries'] : preg_split('/\R/', (string)($in['entries'] ?? ''));
     $lines = array_values(array_filter(array_map('trim', $lines), 'strlen'));
     if (count($lines) < 2) fail('Add at least two ' . ($doubles ? 'pairs' : 'players') . ', one on each line');
@@ -160,7 +169,8 @@ function tn_tour_create(array $in, array $u): int {
             q('INSERT INTO tn_entries (tour_id, pos, grp, p1, p2, name) VALUES (?,?,?,?,?,?)', [$tid, $i + 1, $g, $p1, $p2, $nm]);
             $entries[] = ['id' => lastId(), 'grp' => $g, 'p1' => $p1, 'p2' => $p2, 'name' => $nm];
         }
-        $ins = function (?array $a, ?array $b, int $round, int $slot, ?int $grp, string $status = 'scheduled', ?int $winner = null) use ($tid, $u, $doubles, $f) {
+        $ins = function (?array $a, ?array $b, int $round, int $slot, ?int $grp, string $status = 'scheduled', ?int $winner = null, ?array $fmt = null) use ($tid, $u, $doubles, $f) {
+            $f = $fmt ?: $f;
             q('INSERT INTO tn_matches (owner_id, tour_id, round, slot, grp, entry_a, entry_b, doubles, a1, a2, b1, b2, a_name, b_name, format, status, winner) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
               [$u['id'], $tid, $round, $slot, $grp, $a['id'] ?? null, $b['id'] ?? null, $doubles ? 1 : 0, $a['p1'] ?? null, $a['p2'] ?? null, $b['p1'] ?? null, $b['p2'] ?? null,
                $a['name'] ?? '', $b['name'] ?? '', json_encode($f), $status, $winner]);
@@ -183,10 +193,11 @@ function tn_tour_create(array $in, array $u): int {
             $size = 2; while ($size < count($entries)) $size *= 2;
             $order = tn_seed_order($size); $rounds = (int)log($size, 2);
             for ($r = 1; $r <= $rounds; $r++) for ($s = 0; $s < $size / (2 ** $r); $s++) {
-                if ($r > 1) { $ins(null, null, $r, $s, null); continue; }
+                $fmt = $rounds - $r < $finalRounds ? $ff : $f;
+                if ($r > 1) { $ins(null, null, $r, $s, null, 'scheduled', null, $fmt); continue; }
                 $a = $entries[$order[2 * $s] - 1] ?? null; $b = $entries[$order[2 * $s + 1] - 1] ?? null;
                 $bye = !$a || !$b;
-                $ins($a, $b, 1, $s, null, $bye ? 'bye' : 'scheduled', $bye ? ($a ? 0 : 1) : null);
+                $ins($a, $b, 1, $s, null, $bye ? 'bye' : 'scheduled', $bye ? ($a ? 0 : 1) : null, $fmt);
             }
             foreach (rows("SELECT * FROM tn_matches WHERE tour_id=? AND status='bye'", [$tid]) as $m) tn_ko_advance($m);
         }

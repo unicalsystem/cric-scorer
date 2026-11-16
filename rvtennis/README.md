@@ -6,6 +6,12 @@ Point-by-point tennis scoring for RV Sports Club, served at https://rvtennis.cri
 - **Scoring** - tap the winner's half of the court. Singles and doubles; best of 1/3/5, short sets, pro set,
   7-point tiebreaks, 10-point match tiebreak, no-ad. Server and service court shown, ace / double fault, undo,
   retirement and walkover, or type in a finished score.
+- **Rules that vary are settings** (per match, per tournament, and per knockout round - e.g. short no-ad sets in early
+  rounds, best of 3 from the semi-finals): sets in the match (1/3/5), games per set (6/4/8), advantage or no-ad, set
+  tiebreak (7 or 10 points at games-all, or none), deciding set (full set or a 10/7-point match tiebreak). Defaults are
+  standard tennis. On the scoring screen: 1st/2nd serve with Fault and Let, optional point tags (winner, forced /
+  unforced error), doubles serving order and receiving courts chosen at the start of each set, the receiver's court
+  choice on a no-ad deciding point, and Retired / Walkover / Default.
 - **Following** - anyone can open a match link (`/m/12`) and watch the score update; stats and game-by-game view.
 - **Tournaments** (club admins) - round robin (1-8 groups, with tables) and seeded knockout draws with byes;
   winners move on automatically.

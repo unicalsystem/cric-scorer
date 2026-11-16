@@ -124,11 +124,35 @@ async function vHome() {
 }
 
 /* ---------- New match ---------- */
-function formatFields(sel = 'bo3') {
-  return `<label class="f">Match format<select id="f-preset">${Object.entries(S.boot.presets).map(([k, l]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
-    <label class="chk"><input type="checkbox" id="f-noad"><span>No-ad scoring <span class="muted small">(at deuce, the next point wins the game)</span></span></label>`;
+/* Every rule that differs between tournaments is a setting; the defaults are standard tennis (best of 3, sets to 6,
+   advantage scoring, 7-point tiebreak at 6-6, full deciding set). */
+const FORMAT_DEFAULT = { best: 3, games: 6, noad: false, tb_at: 6, tb_to: 7, final: 'set', final_to: 10 };
+function formatFields(x = '', f = FORMAT_DEFAULT) {
+  const o = (v, cur, label) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${label}</option>`;
+  return `<div class="fmt" data-fmt="${x}">
+    <label class="f">Match format<select data-f="best">${o(3, f.best, 'Best of 3 sets')}${o(1, f.best, '1 set (a single set decides the match)')}${o(5, f.best, 'Best of 5 sets')}</select></label>
+    <label class="f">Games per set<select data-f="games">${o(6, f.games, '6 games (standard)')}${o(4, f.games, '4 games (short set / Fast4)')}${o(8, f.games, '8 games (pro set)')}</select></label>
+    <label class="f">Deuce rule<select data-f="noad">${o(0, f.noad ? 1 : 0, 'Advantage (standard)')}${o(1, f.noad ? 1 : 0, 'No-ad: one deciding point at 40–40')}</select></label>
+    <label class="f">Set tiebreak<select data-f="tb">${o(7, f.tb_at ? f.tb_to : 0, '7-point tiebreak at games-all')}${o(10, f.tb_at ? f.tb_to : 0, '10-point tiebreak at games-all')}${o(0, f.tb_at ? f.tb_to : 0, 'No tiebreak (advantage set)')}</select>
+      <span class="hint" data-f="tbhint"></span></label>
+    <label class="f"><span data-f="finlabel">Deciding final set</span><select data-f="final">${o('set', f.final === 'tb' ? 'tb' + f.final_to : 'set', 'A full set')}${o('tb10', f.final === 'tb' ? 'tb' + f.final_to : 'set', '10-point match tiebreak')}${o('tb7', f.final === 'tb' ? 'tb' + f.final_to : 'set', '7-point match tiebreak')}</select></label></div>`;
 }
-const readFormat = () => ({ preset: $('#f-preset').value, noad: $('#f-noad').checked });
+function wireFormat(root = document) {
+  root.querySelectorAll('.fmt').forEach(el => {
+    const g = k => el.querySelector(`[data-f="${k}"]`);
+    const sync = () => {
+      const n = g('games').value, one = g('best').value === '1';
+      g('tbhint').textContent = g('tb').value === '0' ? `Play on until one side leads by two games.` : `Played at ${n}–${n}.`;
+      g('finlabel').textContent = one ? 'The match is played as' : `Deciding ${g('best').value === '5' ? '5th' : '3rd'} set`;
+    };
+    el.onchange = sync; sync();
+  });
+}
+function readFormat(x = '', root = document) {
+  const el = root.querySelector(`.fmt[data-fmt="${x}"]`), g = k => el.querySelector(`[data-f="${k}"]`).value;
+  const games = +g('games'), tb = +g('tb'), fin = g('final');
+  return { best: +g('best'), games, noad: g('noad') === '1', tb_at: tb ? games : 0, tb_to: tb || 7, final: fin === 'set' ? 'set' : 'tb', final_to: fin === 'tb7' ? 7 : 10 };
+}
 async function vNew() {
   setTop('New match', '', { back: '#/' });
   setTabs(null);
@@ -150,7 +174,7 @@ async function vNew() {
     <label class="f">Serving first<select id="first"><option value="0">Side A</option><option value="1">Side B</option></select><span class="hint">You can change this on the match screen until the first point.</span></label>
     <label class="f">Court <span class="muted">(optional)</span><input id="court" maxlength="40" placeholder="Court 1"></label>
     <p style="margin-top:22px"><button class="btn pri wide" id="go">Create match</button></p>`;
-  draw();
+  draw(); wireFormat();
   const pick = d => { dbl = d; $('#sg').setAttribute('aria-pressed', !d); $('#db').setAttribute('aria-pressed', d); draw(); };
   $('#sg').onclick = () => pick(false); $('#db').onclick = () => pick(true);
   $('#go').onclick = () => run(async () => {
@@ -179,6 +203,7 @@ function callText(m) {
 async function vMatch(id) {
   setTabs(null);
   let m = (await api('match', null, { id })).match, tab = 'stats', busy = false;
+  const pref = k => { const v = localStorage.getItem('tn_' + k); return v === null ? k === 'serve' : v === '1'; };   // serve tracking is on unless switched off; point tags are off unless switched on
   const back = () => (m.tour_id ? '#/t/' + m.tour_id : '#/');
   const shareBtn = `<button class="ib" id="share" aria-label="Share this match">${IC.share}</button>`;
   const paint = () => {
@@ -192,13 +217,16 @@ async function vMatch(id) {
     let flag = '';
     if (live && m.status === 'live') {
       const f = st.flag, nm = f ? (f.side ? m.b : m.a) : '';
-      if (f) flag = `<div class="flag ${f.k === 'bp' ? 'warm' : 'hot'}">${{ bp: 'Break point', sp: 'Set point', mp: 'Match point' }[f.k]}, ${esc(nm)}</div>`;
+      const second = st.serve === 2 ? '2nd serve. ' : '';
+      if (st.deciding) flag = `<div class="flag hot">${second}Deciding point: next point wins the game</div>`;
+      else if (f) flag = `<div class="flag ${f.k === 'bp' ? 'warm' : 'hot'}">${second}${{ bp: 'Break point', sp: 'Set point', mp: 'Match point' }[f.k]}, ${esc(nm)}</div>`;
+      else if (second) flag = '<div class="flag warm">2nd serve</div>';
       else if (st.ends) flag = '<div class="flag warm">Change ends</div>';
       else if (st.deuce) flag = `<div class="flag">${st.format.noad ? 'Deuce: deciding point' : 'Deuce'}</div>`;
       else if (st.tb && st.pts[0] + st.pts[1] === 0) flag = `<div class="flag">${st.mtb ? `Match tiebreak, first to ${st.format.final_to}` : `Tiebreak, first to ${st.format.tb_to}`}</div>`;
       else flag = `<div class="flag">${nSets ? `Set ${nSets + 1}` : 'First set'}${m.court ? ', ' + esc(m.court) : ''}</div>`;
     }
-    const result = st.over ? `<div class="result">${badge(m.teams[st.winner], 'xl')}<div class="who">${esc(st.winner ? m.b : m.a)} won</div><div class="sum">${esc(m.summary || '')}${st.outcome === 'ret' ? ' (opponent retired)' : st.outcome === 'wo' ? ' (walkover)' : ''}</div></div>` : '';
+    const result = st.over ? `<div class="result">${badge(m.teams[st.winner], 'xl')}<div class="who">${esc(st.winner ? m.b : m.a)} won</div><div class="sum">${esc(m.summary || '')}${st.outcome === 'ret' ? ' (opponent retired)' : st.outcome === 'wo' ? ' (walkover)' : st.outcome === 'def' ? ' (opponent defaulted)' : ''}</div></div>` : '';
     // the court: side B plays from the top, side A from the bottom
     let court = '';
     const waiting = !m.a || !m.b;
@@ -206,20 +234,32 @@ async function vMatch(id) {
       const srv = st.server, sName = m.names[srv[0]][srv[1]] || (srv[0] ? m.b : m.a);
       const right = st.court === 'deuce';                       // server stands to the right of the centre mark, seen from their own end
       const x = srv[0] === 0 ? (right ? 68 : 32) : (right ? 32 : 68);
-      const half = (side, cls) => `<button class="half ${cls}" data-w="${side}">${badge(m.teams[side], 'ct')}<span class="nm">${esc(side ? m.b : m.a)}</span><span class="do">${srv[0] === side ? esc(sName) + ' serving' : 'Tap: point won'}</span></button>`;
-      court = `<div class="court" id="court"><div class="in">${half(1, 't')}<div class="net"></div>${half(0, 'b')}</div><span class="ball ${srv[0] ? 't' : 'b'}" style="left:calc(${x}% - 10px)"></span></div>
-        <div class="acts"><button class="btn" data-k="ace">Ace</button><button class="btn" data-k="df">Double fault</button><button class="btn" id="undo" ${st.n || st.over ? '' : 'disabled'}>Undo</button></div>`;
+      const rc = st.receiver || [1 - srv[0], 0], rName = m.names[rc[0]][rc[1]] || '';
+      const half = (side, cls) => `<button class="half ${cls}" data-w="${side}">${badge(m.teams[side], 'ct')}<span class="nm">${esc(side ? m.b : m.a)}</span><span class="do">${srv[0] === side ? esc(sName) + (st.serve === 2 ? ': 2nd serve' : ' serving') : (m.doubles && rName ? esc(rName) + ' receiving' : 'Tap: point won')}</span></button>`;
+      const serveOn = pref('serve'), tagOn = pref('tags');
+      const tags = tagOn && m.last_k !== null && !['ace', 'df'].includes(m.last_k) ? `<div class="tags"><span>Last point</span>${[['win', 'Winner'], ['fe', 'Forced error'], ['ue', 'Unforced error']].map(t => `<button class="chip" data-tag="${t[0]}" aria-pressed="${m.last_k === t[0]}">${t[1]}</button>`).join('')}</div>` : '';
+      const pick = st.deciding ? `<div class="card setup"><div class="row"><span class="grow">Receiver chooses the court</span><div class="seg" style="flex:1.4"><button data-dc="0" aria-pressed="${st.court === 'deuce'}">Deuce court</button><button data-dc="1" aria-pressed="${st.court === 'ad'}">Ad court</button></div></div></div>` : '';
+      court = `${pick}<div class="court" id="court"><div class="in">${half(1, 't')}<div class="net"></div>${half(0, 'b')}</div><span class="ball ${srv[0] ? 't' : 'b'}" style="left:calc(${x}% - 10px)"></span></div>
+        <div class="acts ${serveOn ? 'four' : ''}">${serveOn ? `<button class="btn" data-ev="f">${st.serve === 2 ? 'Double fault' : 'Fault'}</button><button class="btn" data-ev="let">Let</button><button class="btn" data-k="ace">Ace</button>`
+          : '<button class="btn" data-k="ace">Ace</button><button class="btn" data-k="df">Double fault</button>'}<button class="btn" id="undo" ${m.ev || st.over ? '' : 'disabled'}>Undo</button></div>${tags}`;
     } else if (can && st.over) court = `<div class="acts" style="grid-template-columns:1fr"><button class="btn" id="undo">${st.manual ? 'Clear this result' : 'Undo the last point'}</button></div>`;
     else if (waiting) court = '<div class="card setup"><p class="muted">This match starts once the previous round is finished.</p></div>';
+    // doubles: at the start of every set each pair says who serves first and who receives in the deuce court
+    const order = () => [0, 1].map(side => `<div class="row" style="margin-top:8px"><span class="grow small">${esc(side ? m.b : m.a)}: serves first</span><div class="seg" style="flex:1.4">${[0, 1].map(i => `<button data-ord="s${side}${i}" aria-pressed="${st.ord[side] === i}">${esc(m.names[side][i])}</button>`).join('')}</div></div>
+        <div class="row" style="margin-top:6px"><span class="grow small">receives in the deuce (right) court</span><div class="seg" style="flex:1.4">${[0, 1].map(i => `<button data-ord="r${side}${i}" aria-pressed="${st.rcv[side] === i}">${esc(m.names[side][i])}</button>`).join('')}</div></div>`).join('');
+    const newSet = can && live && m.doubles && m.status === 'live' && st.setStart && st.sets.length && !st.tb ? `<div class="card setup"><h3>Set ${st.sets.length + 1}: serving order</h3>${order()}<p class="small muted" style="margin-top:8px">This order stays fixed until the set ends.</p></div>` : '';
     const setup = can && m.status === 'scheduled' && !waiting ? `<div class="card setup"><h3>Before the first point</h3>
         <div class="row"><span class="grow">Serving first</span><div class="seg" style="flex:1.4"><button data-first="0" aria-pressed="${m.first_srv === 0}">${esc(m.names[0][0])}</button><button data-first="1" aria-pressed="${m.first_srv === 1}">${esc(m.names[1][0])}</button></div></div>
-        ${m.doubles ? `<p class="small muted" style="margin-top:8px">In each pair the first name serves first. <a href="#" data-swap="a">Swap ${esc(m.a)}</a>, <a href="#" data-swap="b">swap ${esc(m.b)}</a>.</p>` : ''}
+        ${m.doubles ? order() : ''}
         <p class="small muted" style="margin-top:8px">Tap a side of the court each time that side wins a point. Played already? <a href="#" id="typed">Enter the final score</a>.</p></div>` : '';
     // stats / point by point
-    const s = st.stats, pct = (a, b) => b ? `${Math.round(100 * a / b)}%` : '–';
+    const s = st.stats.map(x => ({ f1: 0, w1: 0, w2: 0, lets: 0, win: 0, fe: 0, ue: 0, ...x })), pct = (a, b) => b > 0 ? `${Math.round(100 * a / b)}%` : '–';
     const stats = st.manual ? '<p class="empty">This result was entered after the match, so there are no point-by-point stats.</p>' : !st.n ? '<p class="empty">Stats appear once the match starts.</p>' :
       `<table class="st"><thead><tr><td>${esc(m.a)}</td><td class="k"></td><td>${esc(m.b)}</td></tr></thead><tbody>${[
         ['Points won', s[0].pts, s[1].pts], ['Aces', s[0].aces, s[1].aces], ['Double faults', s[0].df, s[1].df],
+        ...(s[0].f1 + s[1].f1 ? [['1st serves in', pct(s[0].sp - s[0].f1, s[0].sp), pct(s[1].sp - s[1].f1, s[1].sp)],
+          ['Points won on 1st serve', pct(s[0].w1, s[0].sp - s[0].f1), pct(s[1].w1, s[1].sp - s[1].f1)], ['Points won on 2nd serve', pct(s[0].w2, s[0].f1 - s[0].df), pct(s[1].w2, s[1].f1 - s[1].df)]] : []),
+        ...(s[0].win + s[1].win + s[0].fe + s[1].fe + s[0].ue + s[1].ue ? [['Winners', s[0].win, s[1].win], ['Forced errors', s[0].fe, s[1].fe], ['Unforced errors', s[0].ue, s[1].ue]] : []),
         ['Service points won', pct(s[0].sw, s[0].sp), pct(s[1].sw, s[1].sp)], ['Break points won', `${s[0].bpw}/${s[0].bpc}`, `${s[1].bpw}/${s[1].bpc}`],
         ['Games won', s[0].games, s[1].games], ['Most points in a row', s[0].run, s[1].run]].map(r => `<tr><td>${r[1]}</td><td class="k">${r[0]}</td><td>${r[2]}</td></tr>`).join('')}</tbody></table>`;
     let pbp = '';
@@ -236,7 +276,7 @@ async function vMatch(id) {
     });
     if (pbp) pbp += '<p class="small muted" style="margin-top:10px">Filled dot: point won by the server. Ring: won by the receiver.</p>';
     view().innerHTML = `<div class="mgrid"><div><div class="board"><div class="ctx"><span>${esc(m.doubles ? 'Doubles' : 'Singles')}${m.court ? ', ' + esc(m.court) : ''}</span><span>${status}</span></div>${bl(0)}${bl(1)}</div>
-      ${result}${flag}${setup}${court}</div>
+      ${result}${flag}${setup}${newSet}${court}</div>
       <div><div class="tabs2" role="tablist"><button role="tab" aria-selected="${tab === 'stats'}" data-tab="stats">Stats</button><button role="tab" aria-selected="${tab === 'pbp'}" data-tab="pbp">Game by game</button></div>
       <div class="${tab === 'pbp' ? 'pbp' : ''}">${tab === 'stats' ? stats : (pbp || '<p class="empty">Games appear here as they are played.</p>')}</div>
       ${!can && !S.user && live ? '<p class="small muted" style="margin-top:18px">Scoring this match? <a href="#/me">Sign in</a>.</p>' : ''}</div></div>`;
@@ -244,9 +284,10 @@ async function vMatch(id) {
   const act = async (a, body) => {
     if (busy) return; busy = true;
     const c = $('#court'); if (c) c.classList.add('busy');
-    try { m = (await api(a, { id, n: m.state.n + (m.state.outcome ? 1 : 0), ...body })).match; if (navigator.vibrate) navigator.vibrate(12); if (a === 'point') say(callText(m)); }
+    try { m = (await api(a, { id, n: m.ev, ...body })).match; if (navigator.vibrate) navigator.vibrate(12); if (a === 'point') say(callText(m)); }
     catch (e) { toast(e.message, true); if (e.status === 401) S.user = null; try { m = (await api('match', null, { id })).match; } catch (x) { /* keep what we have */ } }
     busy = false; paint();
+    if (a === 'ev' && body.t === 'let') toast('Let: replay the serve');
     if (a === 'point' || a === 'undo') view().querySelectorAll('.bl .pt').forEach(el => el.classList.add('pop'));
   };
   view().onclick = e => {
@@ -254,6 +295,10 @@ async function vMatch(id) {
     if (t.dataset.w !== undefined) return act('point', { w: +t.dataset.w });
     if (t.dataset.k) { const srv = m.state.server[0]; return act('point', { w: t.dataset.k === 'ace' ? srv : 1 - srv, k: t.dataset.k }); }
     if (t.id === 'undo') return act('undo', {});
+    if (t.dataset.ev) return act('ev', { t: t.dataset.ev });
+    if (t.dataset.dc !== undefined) return act('ev', { t: 'dc', c: +t.dataset.dc });
+    if (t.dataset.tag) return act('tag', { k: t.dataset.tag });
+    if (t.dataset.ord) { const [k, side, i] = t.dataset.ord, st = m.state, v = k === 's' ? [...st.ord] : [...st.rcv]; v[+side] = +i; return act('ev', { t: 'ord', s: k === 's' ? v : st.ord, r: k === 'r' ? v : st.rcv }); }
     if (t.dataset.tab) { tab = t.dataset.tab; return paint(); }
     if (t.dataset.first !== undefined) return act('match_edit', { first_srv: +t.dataset.first });
     if (t.dataset.swap) { e.preventDefault(); return act('match_edit', { ['swap_' + t.dataset.swap]: 1 }); }
@@ -282,7 +327,11 @@ async function vMatch(id) {
       const live = !m.state.over;
       const d = sheet(`<h2>Match options</h2><div class="list">
         ${live ? `<button data-o="typed">Enter the final score</button><button data-o="ret0">${esc(m.b)} retired: ${esc(m.a)} wins</button><button data-o="ret1">${esc(m.a)} retired: ${esc(m.b)} wins</button>
-          <button data-o="wo0">Walkover to ${esc(m.a)}</button><button data-o="wo1">Walkover to ${esc(m.b)}</button>` : ''}
+          <button data-o="wo0">Walkover to ${esc(m.a)}</button><button data-o="wo1">Walkover to ${esc(m.b)}</button>
+          <button data-o="def0">${esc(m.b)} defaulted: ${esc(m.a)} wins</button><button data-o="def1">${esc(m.a)} defaulted: ${esc(m.b)} wins</button>` : ''}
+        ${m.status === 'scheduled' ? '<button data-o="fmt">Match format and rules</button>' : ''}
+        <button data-o="serve">${pref('serve') ? 'Stop tracking 1st and 2nd serves' : 'Track 1st and 2nd serves (Fault, Let)'}</button>
+        <button data-o="tags">${pref('tags') ? 'Stop tagging points' : 'Tag points (winner, forced or unforced error)'}</button>
         <button data-o="court">Court and start time</button><button data-o="scorer">Hand scoring to someone else</button>
         <button data-o="voice">${S.voice ? 'Stop reading the score aloud' : 'Read the score aloud'}</button>
         ${m.tour_id ? '' : '<button data-o="del" class="danger">Delete this match</button>'}</div>`);
@@ -290,7 +339,15 @@ async function vMatch(id) {
         const o = (ev.target.closest('[data-o]') || {}).dataset; if (!o) return;
         d.close();
         if (o.o === 'typed') return typedResult();
-        if (/^(ret|wo)/.test(o.o)) { const w = +o.o.slice(-1); if (await confirmSheet('End the match?', `${w ? m.b : m.a} is recorded as the winner. You can undo this.`, 'End match')) { m = (await api('match_end', { id, w, why: o.o.slice(0, -1) })).match; paint(); } return; }
+        if (o.o === 'serve' || o.o === 'tags') { localStorage.setItem('tn_' + o.o, pref(o.o) ? '0' : '1'); return paint(); }
+        if (o.o === 'fmt') {
+          const s2 = sheet(`<h2>Match format and rules</h2><p class="muted small">These can change until the first point is played.</p>${formatFields('e', m.format)}
+            <div class="btns"><button class="btn" data-close>Cancel</button><button class="btn pri" id="e-save">Save</button></div>`);
+          wireFormat(s2);
+          $('#e-save', s2).onclick = () => run(async () => { m = (await api('match_edit', { id, format: readFormat('e', s2) })).match; s2.close(); paint(); });
+          return;
+        }
+        if (/^(ret|wo|def)/.test(o.o)) { const w = +o.o.slice(-1); if (await confirmSheet('End the match?', `${w ? m.b : m.a} is recorded as the winner. You can undo this.`, 'End match')) { m = (await api('match_end', { id, w, why: o.o.slice(0, -1) })).match; paint(); } return; }
         if (o.o === 'voice') { S.voice = !S.voice; localStorage.setItem('tn_voice', S.voice ? '1' : '0'); if (S.voice) say('Score announcements on'); return toast(S.voice ? 'The score is read aloud after each point' : 'Voice off'); }
         if (o.o === 'del') { if (await confirmSheet('Delete this match?', 'The score and stats are removed for everyone. This cannot be undone.', 'Delete match', true)) { await api('match_delete', { id }); go('#/'); } return; }
         if (o.o === 'court') {
@@ -361,7 +418,9 @@ async function vTourNew() {
     <label class="f">Type</label><div class="seg" style="margin-top:6px"><button data-kind="rr" aria-pressed="true">Round robin</button><button data-kind="ko" aria-pressed="false">Knockout</button></div>
     <p class="small muted" id="t-kind-hint" style="margin-top:6px"></p>
     <div class="seg" style="margin-top:14px"><button data-dbl="0" aria-pressed="true">Singles</button><button data-dbl="1" aria-pressed="false">Doubles</button></div>
-    ${formatFields('bo3mtb')}
+    ${formatFields()}
+    <div id="t-final"><label class="f">Final rounds<select id="t-fr"><option value="0">Same format in every round</option><option value="1">The final uses a different format</option><option value="2">Semi-finals and final use a different format</option><option value="3">Quarter-finals onward use a different format</option></select></label>
+      <div id="t-ff" hidden><h2 class="sec" style="margin-top:16px">Format for those rounds</h2>${formatFields('g')}</div></div>
     <label class="f" id="t-groups-l">Groups<select id="t-groups">${[1, 2, 3, 4, 6, 8].map(n => `<option value="${n}">${n === 1 ? 'One group: everyone plays everyone' : n + ' groups'}</option>`).join('')}</select></label>
     <label class="f"><span id="t-ent-l"></span><textarea id="t-entries" autocapitalize="words" spellcheck="false"></textarea><span class="hint" id="t-ent-h"></span></label>
     <p style="margin-top:22px"><button class="btn pri wide" id="t-go">Create tournament and fixtures</button></p>`;
@@ -370,14 +429,16 @@ async function vTourNew() {
     view().querySelectorAll('[data-dbl]').forEach(b => b.setAttribute('aria-pressed', (b.dataset.dbl === '1') === dbl));
     $('#t-kind-hint').textContent = kind === 'rr' ? 'Everyone in a group plays everyone else; a table ranks them.' : 'Lose and you are out. The draw is seeded in the order you list the entries; byes go to the top seeds.';
     $('#t-groups-l').style.display = kind === 'rr' ? '' : 'none';
+    $('#t-final').style.display = kind === 'ko' ? '' : 'none';
+    $('#t-ff').hidden = $('#t-fr').value === '0';
     $('#t-ent-l').textContent = dbl ? 'Pairs, one per line' : 'Players, one per line';
     $('#t-entries').placeholder = dbl ? 'Asha / Meera\nRavi / Kiran' : 'Asha\nRavi\nKiran';
     $('#t-ent-h').textContent = (dbl ? 'Write each pair as "Name / Name". ' : '') + 'List the strongest first: that order is the seeding.';
   };
-  sync();
+  sync(); wireFormat(); $('#t-fr').onchange = sync;
   view().onclick = e => { const b = e.target.closest('[data-kind],[data-dbl]'); if (!b) return; if (b.dataset.kind) kind = b.dataset.kind; else dbl = b.dataset.dbl === '1'; sync(); };
   $('#t-go').onclick = () => run(async () => {
-    const r = await api('tour_new', { name: $('#t-name').value, kind, doubles: dbl, format: readFormat(), groups: +$('#t-groups').value, entries: $('#t-entries').value });
+    const r = await api('tour_new', { name: $('#t-name').value, kind, doubles: dbl, format: readFormat(), final_rounds: kind === 'ko' ? +$('#t-fr').value : 0, final_format: readFormat('g'), groups: +$('#t-groups').value, entries: $('#t-entries').value });
     go('#/t/' + r.id);
   });
 }

@@ -266,3 +266,12 @@ dialog.sheet .btns .btn{flex:1}
 label.f > select + select,label.f > input + select,label.f > input + input{margin-top:8px}
 .plist a .btn{margin-left:8px}
 @media (min-width:900px){ #app[data-wide] .tgrid{grid-template-columns:repeat(4,1fr)} #app[data-wide] .thero{max-width:560px} }
+
+/* ---- rule options on the scoring screen ---- */
+.acts.four{grid-template-columns:repeat(4,1fr)}
+.acts.four .btn{font-size:14px;padding:0 4px}
+.tags{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 14px}
+.tags span{font-size:13px;color:var(--muted);font-weight:600}
+.chip{min-height:38px;padding:0 12px;border-radius:20px;border:1px solid var(--rule);background:var(--card);font-weight:700;font-size:13.5px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--navy);border-color:var(--navy);color:#fff}
+.fmt{max-width:560px}

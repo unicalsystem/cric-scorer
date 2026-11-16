@@ -9,8 +9,13 @@
             final  'set' | 'tb'     deciding set played in full, or replaced by a match tiebreak
             final_to 10             points to win the match tiebreak
             noad   bool             at deuce the next point wins the game
-   Event:   ['w' => 0|1, 'k' => ''|'ace'|'df']     a point won by side 0 (A) or 1 (B)
-            ['t' => 'ret'|'wo', 'w' => 0|1]         retirement / walkover, 'w' is the winner (always the last event) */
+   Event:   ['w' => 0|1, 'k' => ''|'ace'|'df'|'win'|'fe'|'ue']   a point won by side 0 (A) or 1 (B); k = how it ended
+            ['t' => 'f']                            a service fault: the first moves to 2nd serve, the second is a double fault
+            ['t' => 'let']                          a service let: the serve is replayed, nothing changes (counted only)
+            ['t' => 'ord', 's' => [0|1, 0|1], 'r' => [0|1, 0|1]]   doubles, start of a set only: which partner of each pair
+                                                    serves first (s) and which receives in the deuce court (r)
+            ['t' => 'dc', 'c' => 0|1]               no-ad deciding point: the receiver picks the deuce (0) or ad (1) court
+            ['t' => 'ret'|'wo'|'def', 'w' => 0|1]   retirement / walkover / default, 'w' is the winner (always the last event) */
 
 const TN_PRESETS = [
     'bo3'    => ['label' => 'Best of 3 sets',                      'best' => 3, 'games' => 6, 'tb_at' => 6, 'tb_to' => 7, 'final' => 'set', 'final_to' => 10, 'noad' => false],
@@ -47,9 +52,15 @@ function tn_format_label(array $f): string {
         if ($f['best'] > 1 && $f['final'] === 'tb') $s .= ", {$f['final_to']}-point decider";
         if ($f['tb_at'] === 0) $s .= ', no tiebreak';
         elseif ($f['tb_at'] !== $f['games']) $s .= ", tiebreak at {$f['tb_at']}-all";
+        if ($f['tb_at'] > 0 && $f['tb_to'] !== 7) $s .= ", {$f['tb_to']}-point tiebreaks";
     }
     return $s . ($f['noad'] ? ', no-ad' : '');
 }
+
+const TN_STATS_ZERO = ['pts' => 0, 'aces' => 0, 'df' => 0, 'sp' => 0, 'sw' => 0, 'bpc' => 0, 'bpw' => 0, 'games' => 0, 'run' => 0,
+    'f1' => 0, 'w1' => 0, 'w2' => 0, 'lets' => 0, 'win' => 0, 'fe' => 0, 'ue' => 0];
+// sp/sw service points played/won · bpc/bpw break points had/converted · f1 points that went to a 2nd serve · w1/w2 points won on 1st/2nd
+// serve · win winners hit · fe/ue forced/unforced errors made
 
 class TnMatch {
     public array $f;
@@ -65,7 +76,13 @@ class TnMatch {
     public int $serveIdx = 0;          // games started so far (a tiebreak counts as one)
     public bool $over = false;
     public ?int $winner = null;
-    public ?string $outcome = null;    // null (played out) | 'ret' | 'wo'
+    public ?string $outcome = null;    // null (played out) | 'ret' | 'wo' | 'def'
+    public bool $fault = false;        // the first serve of this point was a fault (2nd serve to come)
+    public array $ord = [0, 0];        // doubles: partner of each pair serving first in this set
+    public array $rcv = [0, 0];        // doubles: partner of each pair receiving in the deuce court in this set
+    public ?int $pick = null;          // no-ad deciding point: court the receiver chose (0 deuce, 1 ad)
+    public int $acts = 0;              // events that count as play (everything except 'ord')
+    private int $set0 = 0;             // serveIdx when the current set began
     public int $n = 0;                 // points played
     public array $stats;
     public array $log = [[]];          // per set, per game: ['s'=>server side,'w'=>winner,'p'=>'0110..','tb'=>bool]
@@ -76,7 +93,7 @@ class TnMatch {
         $this->f = tn_format($format);
         $this->doubles = $doubles;
         $this->first = $first ? 1 : 0;
-        $z = ['pts' => 0, 'aces' => 0, 'df' => 0, 'sp' => 0, 'sw' => 0, 'bpc' => 0, 'bpw' => 0, 'games' => 0, 'run' => 0];
+        $z = TN_STATS_ZERO;
         $this->stats = [$z, $z];
         $this->startSet();
     }
@@ -84,6 +101,7 @@ class TnMatch {
 
     private function startSet(): void {
         $this->games = [0, 0]; $this->pts = [0, 0];
+        $this->set0 = $this->serveIdx;
         $deciding = $this->setsWon[0] === $this->need() - 1 && $this->setsWon[1] === $this->need() - 1;
         $this->mtb = $deciding && $this->f['final'] === 'tb';
         $this->inTb = $this->mtb;
@@ -92,10 +110,21 @@ class TnMatch {
     /** [side, player index within the side] serving the next point */
     public function server(): array {
         $i = $this->serveIdx + ($this->inTb ? intdiv($this->pts[0] + $this->pts[1] + 1, 2) : 0);
-        if (!$this->doubles) return [($this->first + $i) % 2, 0];
-        $i %= 4;
-        return [($this->first + $i) % 2, intdiv($i, 2)];
+        $side = ($this->first + $i) % 2;
+        if (!$this->doubles) return [$side, 0];
+        // the order A1 → B1 → A2 → B2 is fixed for the set; each pair may name a new first server when a set starts
+        return [$side, ($this->ord[$side] + intdiv($i - $this->set0, 2)) % 2];
     }
+    /** 0 = deuce (right) court, 1 = ad (left) court for the next serve */
+    public function court(): int { return $this->pick ?? (($this->pts[0] + $this->pts[1]) % 2); }
+    /** [side, player] receiving the next serve: in doubles each partner keeps one court for the whole set */
+    public function receiver(): array {
+        $side = 1 - $this->server()[0];
+        if (!$this->doubles) return [$side, 0];
+        return [$side, $this->court() === 0 ? $this->rcv[$side] : 1 - $this->rcv[$side]];
+    }
+    public function atSetStart(): bool { return !$this->over && !$this->fault && $this->pts === [0, 0] && $this->games === [0, 0]; }
+    private function decidingPoint(): bool { return $this->f['noad'] && !$this->inTb && $this->pts[0] >= 3 && $this->pts[0] === $this->pts[1]; }
     /** Would the receiver win the game with the next point? */
     private function isBreakPoint(): bool {
         if ($this->inTb || $this->over) return false;
@@ -105,14 +134,29 @@ class TnMatch {
 
     public function apply(array $e): void {
         if ($this->over) return;
-        if (isset($e['t'])) {
-            $this->over = true; $this->winner = !empty($e['w']) ? 1 : 0; $this->outcome = $e['t'] === 'wo' ? 'wo' : 'ret';
+        $t = $e['t'] ?? null;
+        if ($t === 'ord') {   // only between sets (or before the match): the order is locked once a set is under way
+            if ($this->doubles && $this->atSetStart()) {
+                foreach ([0, 1] as $i) { if (isset($e['s'][$i])) $this->ord[$i] = $e['s'][$i] ? 1 : 0; if (isset($e['r'][$i])) $this->rcv[$i] = $e['r'][$i] ? 1 : 0; }
+            }
+            return;
+        }
+        $this->acts++;
+        if ($t === 'let') { $this->stats[$this->server()[0]]['lets']++; return; }
+        if ($t === 'dc') { if ($this->decidingPoint()) $this->pick = !empty($e['c']) ? 1 : 0; return; }
+        if ($t === 'f') {
+            if (!$this->fault) { $this->fault = true; return; }
+            $e = ['w' => 1 - $this->server()[0], 'k' => 'df'];   // second fault: double fault, point to the receiver
+        } elseif ($t !== null) {
+            $this->over = true; $this->winner = !empty($e['w']) ? 1 : 0; $this->outcome = in_array($t, ['wo', 'def'], true) ? $t : 'ret';
             return;
         }
         $w = !empty($e['w']) ? 1 : 0; $l = 1 - $w;
         $k = (string)($e['k'] ?? '');
         $srv = $this->server()[0];
         $bp = $this->isBreakPoint();
+        $second = $this->fault;
+        $this->fault = false; $this->pick = null;
         $this->n++;
         $st = &$this->stats;
         $st[$w]['pts']++;
@@ -120,6 +164,10 @@ class TnMatch {
         if ($w === $srv) $st[$srv]['sw']++;
         if ($k === 'ace' && $w === $srv) $st[$srv]['aces']++;
         if ($k === 'df' && $w !== $srv) $st[$srv]['df']++;
+        if ($k === 'win') $st[$w]['win']++;
+        if ($k === 'fe' || $k === 'ue') $st[$l][$k]++;
+        if ($second || $k === 'df') $st[$srv]['f1']++;
+        if ($w === $srv) $st[$srv][$second ? 'w2' : 'w1']++;
         if ($bp) { $st[1 - $srv]['bpc']++; if ($w !== $srv) $st[1 - $srv]['bpw']++; }
         $this->streak[$w]++; $this->streak[$l] = 0;
         $st[$w]['run'] = max($st[$w]['run'], $this->streak[$w]);
@@ -213,7 +261,9 @@ class TnMatch {
             'format' => $this->f, 'doubles' => $this->doubles, 'sets' => $this->sets, 'setsWon' => $this->setsWon,
             'games' => $this->games, 'pts' => $this->pts, 'label' => $this->label(), 'tb' => $this->inTb, 'mtb' => $this->mtb,
             'deuce' => !$this->inTb && $this->pts[0] >= 3 && $this->pts[0] === $this->pts[1],
-            'server' => $this->over ? null : $this->server(), 'court' => $tot % 2 === 0 ? 'deuce' : 'ad',
+            'server' => $this->over ? null : $this->server(), 'court' => $this->court() === 0 ? 'deuce' : 'ad',
+            'receiver' => $this->over ? null : $this->receiver(), 'serve' => $this->fault ? 2 : 1, 'ord' => $this->ord, 'rcv' => $this->rcv,
+            'setStart' => $this->atSetStart(), 'deciding' => !$this->over && $this->decidingPoint(), 'picked' => $this->pick !== null, 'acts' => $this->acts,
             'over' => $this->over, 'winner' => $this->winner, 'outcome' => $this->outcome, 'flag' => $flag, 'ends' => $ends,
             'call' => $this->call(), 'n' => $this->n, 'stats' => $this->stats, 'log' => $log,
         ];
@@ -235,6 +285,7 @@ function tn_summary(array $sets, ?string $outcome = null): string {
     }
     $t = implode(' ', $p);
     if ($outcome === 'ret') $t = trim($t . ' ret.');
+    if ($outcome === 'def') $t = trim($t . ' def.');
     if ($outcome === 'wo') $t = 'w/o';
     return $t;
 }
@@ -253,8 +304,9 @@ function tn_manual_state(array $format, bool $doubles, array $rows): array {
         if ($won[$w] >= $need) $winner = $w;
     }
     if ($winner === null) throw new InvalidArgumentException('That is not a finished match - ' . ($need === 1 ? 'enter the set score' : "one side needs $need sets"));
-    $z = ['pts' => 0, 'aces' => 0, 'df' => 0, 'sp' => 0, 'sw' => 0, 'bpc' => 0, 'bpw' => 0, 'games' => 0, 'run' => 0];
+    $z = TN_STATS_ZERO;
     return ['format' => $f, 'doubles' => $doubles, 'sets' => $sets, 'setsWon' => $won, 'games' => [0, 0], 'pts' => [0, 0], 'label' => ['', ''],
         'tb' => false, 'mtb' => false, 'deuce' => false, 'server' => null, 'court' => 'deuce', 'over' => true, 'winner' => $winner, 'outcome' => null,
-        'flag' => null, 'ends' => false, 'call' => '', 'n' => 0, 'stats' => [$z, $z], 'log' => [], 'manual' => true];
+        'flag' => null, 'ends' => false, 'call' => '', 'n' => 0, 'stats' => [$z, $z], 'log' => [], 'manual' => true,
+        'receiver' => null, 'serve' => 1, 'ord' => [0, 0], 'rcv' => [0, 0], 'setStart' => false, 'deciding' => false, 'picked' => false, 'acts' => 1];
 }

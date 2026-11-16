@@ -76,8 +76,40 @@ try {
         $ev = json_decode((string)$m['events'], true) ?: [];
         // "n" is how many events the phone had seen: a double tap or a second scorer cannot add a point twice
         if (int_in($in, 'n', -1) === count($ev) && $m['status'] !== 'done') {
-            $k = in_array($in['k'] ?? '', ['ace', 'df'], true) ? $in['k'] : '';
+            $k = in_array($in['k'] ?? '', ['ace', 'df', 'win', 'fe', 'ue'], true) ? $in['k'] : '';
             $ev[] = ['w' => !empty($in['w']) ? 1 : 0] + ($k ? ['k' => $k] : []);
+            $m = tn_store($m, $ev);
+        }
+        $out = ['match' => tn_match_out($m, $u)];
+        break;
+    case 'ev':   // everything a scorer records that is not a plain point: fault, let, doubles order, no-ad court choice
+        $m = $mscore(int_in($in, 'id'));
+        if ($m['a_name'] === '' || $m['b_name'] === '') fail('This match is still waiting for a player from the previous round');
+        $ev = json_decode((string)$m['events'], true) ?: [];
+        $t = (string)($in['t'] ?? '');
+        if (!in_array($t, ['f', 'let', 'ord', 'dc'], true)) fail('Bad request');
+        if (int_in($in, 'n', -1) === count($ev) && $m['status'] !== 'done') {
+            $e = ['t' => $t];
+            if ($t === 'dc') $e['c'] = !empty($in['c']) ? 1 : 0;
+            if ($t === 'ord') {
+                if (!$m['doubles']) fail('Serving order is for doubles');
+                if (empty(tn_replay(tn_format($m['format']), true, (int)$m['first_srv'], $ev)->atSetStart())) fail('The serving order can only change at the start of a set');
+                foreach (['s', 'r'] as $key) if (is_array($in[$key] ?? null)) $e[$key] = [!empty($in[$key][0]) ? 1 : 0, !empty($in[$key][1]) ? 1 : 0];
+                // one order per set start: a second choice replaces the first
+                while ($ev && (end($ev)['t'] ?? '') === 'ord') { $prev = array_pop($ev); $e += array_intersect_key($prev, ['s' => 1, 'r' => 1]); }
+            }
+            $ev[] = $e;
+            $m = tn_store($m, $ev);
+        }
+        $out = ['match' => tn_match_out($m, $u)];
+        break;
+    case 'tag':   // optional: say how the last point ended (winner, forced error, unforced error)
+        $m = $mscore(int_in($in, 'id'));
+        $ev = json_decode((string)$m['events'], true) ?: [];
+        $i = count($ev) - 1;
+        if (int_in($in, 'n', -1) === count($ev) && $i >= 0 && isset($ev[$i]['w']) && !isset($ev[$i]['t']) && !in_array($ev[$i]['k'] ?? '', ['ace', 'df'], true)) {
+            $k = in_array($in['k'] ?? '', ['win', 'fe', 'ue'], true) ? $in['k'] : '';
+            if ($k === '' || ($ev[$i]['k'] ?? '') === $k) unset($ev[$i]['k']); else $ev[$i]['k'] = $k;   // tapping the same tag again clears it
             $m = tn_store($m, $ev);
         }
         $out = ['match' => tn_match_out($m, $u)];
@@ -88,7 +120,7 @@ try {
         $manual = !empty(json_decode((string)$m['state'], true)['manual']);
         if (!$manual && (int_in($in, 'n', -1) !== count($ev) || !$ev)) { $out = ['match' => tn_match_out($m, $u)]; break; }
         if ($manual) $ev = []; else array_pop($ev);
-        if (!$ev) {   // back to "not started"
+        if (!array_filter($ev, fn($e) => ($e['t'] ?? '') !== 'ord')) {   // nothing played is left: back to "not started"
             if ($m['status'] === 'done') tn_ko_retract($m);
             q("UPDATE tn_matches SET status='scheduled', started_at=NULL, finished_at=NULL, winner=NULL WHERE id=?", [$m['id']]);
             $m = $mget((int)$m['id']);
@@ -101,7 +133,7 @@ try {
         if ($m['status'] === 'done') fail('This match is already finished');
         if ($m['a_name'] === '' || $m['b_name'] === '') fail('This match is still waiting for a player from the previous round');
         $ev = json_decode((string)$m['events'], true) ?: [];
-        $ev[] = ['t' => ($in['why'] ?? '') === 'wo' ? 'wo' : 'ret', 'w' => !empty($in['w']) ? 1 : 0];
+        $ev[] = ['t' => in_array($in['why'] ?? '', ['wo', 'def'], true) ? $in['why'] : 'ret', 'w' => !empty($in['w']) ? 1 : 0];
         $out = ['match' => tn_match_out(tn_store($m, $ev), $u)];
         break;
     case 'match_result':   // type in a finished score instead of scoring point by point

@@ -66,10 +66,34 @@ $m = new TnMatch(tn_format('bo3')); games($m, 'ababababa'); play($m, 'aaa'); $s 
 ok($s['flag'] && $s['flag']['k'] === 'sp' && $s['flag']['side'] === 0, 'set point (and break point) at 5-4, 0-40');
 play($m, 'bbbbb'); $s = $m->state(); ok($s['games'] === [5, 5] && $s['flag'] === null, 'held to 5-5, nothing at stake');
 
+// 1st / 2nd serve, lets, double fault by two faults, serve stats
+$m = new TnMatch(tn_format('bo3')); $m->apply(['t' => 'let']); $m->apply(['t' => 'f']); $s = $m->state();
+ok($s['serve'] === 2 && $s['n'] === 0 && $s['stats'][0]['lets'] === 1, '2nd serve after a fault');
+$m->apply(['t' => 'f']); $s = $m->state();
+ok($s['serve'] === 1 && $s['label'] === ['0', '15'] && $s['stats'][0]['df'] === 1 && $s['stats'][0]['f1'] === 1, 'two faults = double fault');
+$m->apply(['t' => 'f']); $m->apply(['w' => 0]); $m->apply(['w' => 0, 'k' => 'win']); $m->apply(['w' => 1, 'k' => 'ue']); $m->apply(['w' => 1, 'k' => 'fe']); $s = $m->state()['stats'];
+ok($s[0]['w2'] === 1 && $s[0]['w1'] === 1 && $s[0]['f1'] === 2 && $s[0]['sp'] === 5, 'won on 1st / 2nd serve');
+ok($s[0]['win'] === 1 && $s[0]['ue'] === 1 && $s[0]['fe'] === 1 && $s[1]['ue'] === 0, 'winner to the winner, errors to the loser');
+
+// doubles: order and receiving courts are chosen per set and locked during it
+$m = new TnMatch(tn_format('bo3'), true, 0); $m->apply(['t' => 'ord', 's' => [1, 0], 'r' => [0, 1]]);
+ok($m->server() === [0, 1] && $m->receiver() === [1, 1] && $m->acts === 0, 'A2 serves first; B2 receives in the deuce court');
+play($m, 'a'); ok($m->receiver() === [1, 0], 'B1 receives in the ad court');
+$m->apply(['t' => 'ord', 's' => [0, 0]]); ok($m->server() === [0, 1], 'order cannot change during a set');
+play($m, 'aaa'); ok($m->server() === [1, 0], 'then B1'); play($m, 'aaaa'); ok($m->server() === [0, 0], 'then A1'); play($m, 'aaaa'); ok($m->server() === [1, 1], 'then B2');
+games($m, 'aaa'); ok($m->setsWon === [1, 0] && $m->state()['setStart'] && $m->server() === [0, 1], 'new set: same order unless changed');
+$m->apply(['t' => 'ord', 's' => [0, 1]]); ok($m->server() === [0, 0], 'new set: A1 named to serve first'); play($m, 'aaaa'); ok($m->server() === [1, 1], 'and B2 first for pair B');
+
+// no-ad deciding point: the receiver picks the court
+$m = new TnMatch(tn_format(['noad' => true])); play($m, 'aaabb'); $m->apply(['t' => 'dc', 'c' => 1]); ok($m->state()['court'] === 'ad', 'no pick before 40-40 (5 points: ad court anyway)');
+play($m, 'b'); $s = $m->state(); ok($s['deciding'] && $s['court'] === 'deuce', 'deciding point defaults to the deuce court');
+$m->apply(['t' => 'dc', 'c' => 1]); ok($m->state()['court'] === 'ad' && $m->state()['picked'], 'receiver picked the ad court'); play($m, 'a'); ok($m->games === [1, 0] && $m->state()['court'] === 'deuce', 'pick cleared');
+
 // retirement and walkover
 $m = new TnMatch(tn_format('bo3')); games($m, 'aaa'); $m->apply(['t' => 'ret', 'w' => 1]); $s = $m->state();
-ok($s['over'] && $s['winner'] === 1 && $s['outcome'] === 'ret', 'retired'); $m->apply(['w' => 0]); ok($m->n === 12, 'no points after the end');
+ok($s['over'] && $s['winner'] === 1 && $s['outcome'] === 'ret', 'retired'); $m->apply(['w' => 0]); $m->apply(['t' => 'f']); ok($m->n === 12 && !$m->fault, 'no points after the end');
 ok(tn_summary([], 'wo') === 'w/o', 'walkover text');
+$m = new TnMatch(tn_format('bo3')); games($m, 'aaaaaa'); $m->apply(['t' => 'def', 'w' => 0]); $s = $m->state(); ok($s['outcome'] === 'def' && tn_summary($s['sets'], 'def') === '6-0 def.', 'default');
 
 // typed-in results
 $st = tn_manual_state(tn_format('bo3mtb'), false, [[6, 4], [3, 6], [10, 8]]); ok($st['winner'] === 0 && tn_summary($st['sets']) === '6-4 3-6 [10-8]', 'manual result');
