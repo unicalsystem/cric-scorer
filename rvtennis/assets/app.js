@@ -75,7 +75,9 @@ function setTabs(on) {
   $('#tabs').innerHTML = t.map(x => `<a href="${x[0]}" class="${x[3] === on ? 'on' : ''}"${x[3] === on ? ' aria-current="page"' : ''}>${x[2]}<span>${x[1]}</span></a>`).join('');
 }
 const when = s => { if (!s) return ''; const d = new Date(s.replace(' ', 'T')); const today = new Date().toDateString() === d.toDateString();
-  return (today ? 'Today' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })) + ', ' + d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }); };
+  const dt = today ? 'Today' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  return / 00:00(:00)?$/.test(s) ? dt : dt + ', ' + d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }); };   // a date with no time: just the date
+const ymd = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const day = s => s ? new Date(s.replace(' ', 'T')).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
 
 /* ---------- teams ---------- */
@@ -94,7 +96,7 @@ function matchRow(m, extra = '') {
   const mini = m.mini || { sets: [], games: [0, 0], label: ['', ''] };
   const live = m.status === 'live', done = m.status === 'done';
   const ctx = [m.tour, m.round_name, m.court].filter(Boolean).join(', ');
-  const right = live ? '<span class="live">Live</span>' : done ? day(m.finished_at) : (m.sched_at ? when(m.sched_at) : 'Not started');
+  const right = live ? '<span class="live">Live</span>' : done ? day(m.sched_at || m.finished_at) : (m.sched_at ? when(m.sched_at) : 'Not started');
   const line = side => {
     const nm = side ? m.b : m.a;
     const cls = done ? (m.winner === side ? 'won' : 'lost') : '';
@@ -179,6 +181,8 @@ async function vNew(tid) {   // #/new/3: a new match in tournament 3
     <div id="sides"></div>
     ${formatFields('', tour ? tour.format : undefined)}
     <label class="f">Serving first<select id="first"><option value="0">Side A</option><option value="1">Side B</option></select><span class="hint">You can change this on the match screen until the first point.</span></label>
+    <div style="display:flex;gap:10px"><label class="f" style="flex:1.3">Match date<input id="mdate" type="date" required value="${ymd()}"></label>
+      <label class="f" style="flex:1">Time <span class="muted">(optional)</span><input id="mtime" type="time"></label></div>
     <label class="f">Court <span class="muted">(optional)</span><input id="court" maxlength="40" placeholder="Court 1"></label>
     <p style="margin-top:22px"><button class="btn pri wide" id="go">Create match</button></p>`;
   draw(); wireFormat();
@@ -187,8 +191,9 @@ async function vNew(tid) {   // #/new/3: a new match in tournament 3
   $('#go').onclick = () => run(async () => {
     const v = id => ($('#' + id) ? $('#' + id).value.trim() : '');
     if (!v('a1') || !v('b1') || (dbl && (!v('a2') || !v('b2')))) return toast('Fill in every player\'s name', true);
+    if (!v('mdate')) return toast('Pick the date of the match', true);
     const r = await api('match_new', { doubles: dbl, a: dbl ? v('a1') + ' / ' + v('a2') : v('a1'), b: dbl ? v('b1') + ' / ' + v('b2') : v('b1'),
-      format: readFormat(), first_srv: +$('#first').value, court: v('court'), team_a: +v('ta') || 0, team_b: +v('tb') || 0, tour_id: tour ? tid : 0 });
+      format: readFormat(), first_srv: +$('#first').value, court: v('court'), sched_at: v('mdate') + ' ' + (v('mtime') || '00:00'), team_a: +v('ta') || 0, team_b: +v('tb') || 0, tour_id: tour ? tid : 0 });
     go('#/m/' + r.id);
   });
 }
@@ -220,7 +225,7 @@ async function vMatch(id) {
     const bl = side => `<div class="bl ${st.over && st.winner === side ? 'won' : ''}"><span class="srv ${live && st.server && st.server[0] === side ? 'on' : ''}"></span>
       ${badge(m.teams[side], 'lg')}<span class="nm">${esc(side ? m.b : m.a)}${team(m.teams[side]) ? `<small>${esc(team(m.teams[side]).name)}</small>` : ''}</span>${st.sets.map(s => setCell(s, side)).join('')}
       ${live ? `<span class="s cur">${st.games[side]}</span><span class="pt">${st.label[side] || (st.label[1 - side] === 'Ad' ? '' : '0')}</span>` : ''}</div>`;
-    const status = m.status === 'live' ? '<span class="live">Live</span>' : m.status === 'done' ? 'Finished ' + day(m.finished_at) : (m.sched_at ? when(m.sched_at) : 'Not started');
+    const status = m.status === 'live' ? '<span class="live">Live</span>' : m.status === 'done' ? 'Finished ' + day(m.finished_at) + (m.sched_at && day(m.sched_at) !== day(m.finished_at) ? ' (match date ' + day(m.sched_at) + ')' : '') : (m.sched_at ? when(m.sched_at) : 'Not started');
     let flag = '';
     if (live && m.status === 'live') {
       const f = st.flag, nm = f ? (f.side ? m.b : m.a) : '';
