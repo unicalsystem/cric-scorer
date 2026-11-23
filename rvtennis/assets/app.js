@@ -158,12 +158,13 @@ function readFormat(x = '', root = document) {
   const games = +g('games'), tb = +g('tb'), fin = g('final');
   return { best: +g('best'), games, lead: g('lead') === '1', noad: g('noad') === '1', tb_at: tb ? games : 0, tb_to: tb || 7, final: fin === 'set' ? 'set' : 'tb', final_to: fin === 'tb7' ? 7 : 10 };
 }
-async function vNew() {
-  setTop('New match', '', { back: '#/' });
+async function vNew(tid) {   // #/new/3: a new match in tournament 3
+  const tour = tid ? (await api('tour', null, { id: tid })).tour : null;
+  setTop('New match', tour ? 'In ' + tour.name : '', { back: tour ? '#/t/' + tid : '#/' });
   setTabs(null);
   if (!S.user) { view().innerHTML = `<div class="card"><p>Sign in to start and score a match.</p><p style="margin-top:12px"><a class="btn pri" href="#/me">Sign in</a></p></div>`; return; }
   const pl = (await api('players')).players;
-  let dbl = false;
+  let dbl = tour ? tour.doubles : false;
   const draw = () => {
     const inp = (id, ph) => `<input id="${id}" list="pl" autocomplete="off" autocapitalize="words" placeholder="${ph}" maxlength="80" value="${esc($('#' + id) ? $('#' + id).value : '')}">`;
     const tsel = id => (S.boot.teams || []).length ? `<select id="${id}" aria-label="Team">${teamOptions($('#' + id) ? +$('#' + id).value : 0).replace('No team', 'Team (optional)')}</select>` : '';
@@ -173,20 +174,21 @@ async function vNew() {
     [['a1', 'ta'], ['b1', 'tb']].forEach(([i, t]) => { if ($('#' + t)) $('#' + i).onchange = () => { const k = known[$('#' + i).value.trim().toLowerCase()]; if (k) $('#' + t).value = k; }; });
   };
   view().innerHTML = `<datalist id="pl">${pl.map(p => `<option value="${esc(p.name)}">`).join('')}</datalist>
-    <div class="seg" role="group" aria-label="Match type"><button id="sg" aria-pressed="true">Singles</button><button id="db" aria-pressed="false">Doubles</button></div>
+    ${tour ? `<div class="card" style="margin-bottom:12px"><p class="small">This match goes into <b>${esc(tour.name)}</b> (${tour.doubles ? 'doubles' : 'singles'}) and counts in its table. New ${tour.doubles ? 'pairs' : 'players'} join the table with their first match.</p></div>`
+      : '<div class="seg" role="group" aria-label="Match type"><button id="sg" aria-pressed="true">Singles</button><button id="db" aria-pressed="false">Doubles</button></div>'}
     <div id="sides"></div>
-    ${formatFields()}
+    ${formatFields('', tour ? tour.format : undefined)}
     <label class="f">Serving first<select id="first"><option value="0">Side A</option><option value="1">Side B</option></select><span class="hint">You can change this on the match screen until the first point.</span></label>
     <label class="f">Court <span class="muted">(optional)</span><input id="court" maxlength="40" placeholder="Court 1"></label>
     <p style="margin-top:22px"><button class="btn pri wide" id="go">Create match</button></p>`;
   draw(); wireFormat();
   const pick = d => { dbl = d; $('#sg').setAttribute('aria-pressed', !d); $('#db').setAttribute('aria-pressed', d); draw(); };
-  $('#sg').onclick = () => pick(false); $('#db').onclick = () => pick(true);
+  if (!tour) { $('#sg').onclick = () => pick(false); $('#db').onclick = () => pick(true); }
   $('#go').onclick = () => run(async () => {
     const v = id => ($('#' + id) ? $('#' + id).value.trim() : '');
     if (!v('a1') || !v('b1') || (dbl && (!v('a2') || !v('b2')))) return toast('Fill in every player\'s name', true);
     const r = await api('match_new', { doubles: dbl, a: dbl ? v('a1') + ' / ' + v('a2') : v('a1'), b: dbl ? v('b1') + ' / ' + v('b2') : v('b1'),
-      format: readFormat(), first_srv: +$('#first').value, court: v('court'), team_a: +v('ta') || 0, team_b: +v('tb') || 0 });
+      format: readFormat(), first_srv: +$('#first').value, court: v('court'), team_a: +v('ta') || 0, team_b: +v('tb') || 0, tour_id: tour ? tid : 0 });
     go('#/m/' + r.id);
   });
 }
@@ -409,7 +411,7 @@ async function vTour(id) {
         ${rows.map((r, i) => `<tr><td class="pos">${i + 1}</td><td class="nm">${esc(r.name)}</td><td>${r.p}</td><td class="w">${r.w}</td><td>${r.l}</td><td>${r.sf}–${r.sa}</td><td>${r.gf}–${r.ga}</td></tr>`).join('')}</tbody></table></div>`;
     }
     html += '<p class="small muted" style="margin:8px 2px 0">Ranked by wins, then sets won minus lost, then games.</p>';
-    if (!d.matches.length) html += `<div class="card" style="margin-top:12px"><p class="muted">No matches in this tournament yet.${t.can_edit ? ' Add matches that were set up on their own with the button below, or from a match\'s options (⋯).' : ''}</p></div>`;
+    if (!d.matches.length) html += `<div class="card" style="margin-top:12px"><p class="muted">No matches in this tournament yet.${t.can_edit ? ' Use New match to add a fixture, or Add existing for a match that was set up on its own.' : ''}</p></div>`;
     const rounds = [...new Set(d.matches.map(m => m.round))];
     html += rounds.map(r => `<h2 class="sec">${rounds.length > 1 ? 'Round ' + r : 'Matches'}</h2>` + d.matches.filter(m => m.round === r).map(m => matchRow({ ...m, round_name: t.groups > 1 ? 'Group ' + String.fromCharCode(65 + m.grp) : '' })).join('')).join('');
   } else {
@@ -421,7 +423,7 @@ async function vTour(id) {
     }
     html += '</div><p class="small muted">Swipe sideways to see every round. Winners move on automatically.</p>';
   }
-  if (t.kind === 'rr' && S.user && S.user.admin) html += `<a class="btn fab" href="javascript:void 0" id="tadd">${IC.plus} Add matches</a>`;
+  if (t.kind === 'rr' && t.can_edit) html += `<div class="fabs"><a class="btn" href="javascript:void 0" id="tadd">${IC.plus} Add existing</a><a class="btn fabm" href="#/new/${id}">${IC.plus} New match</a></div>`;
   view().innerHTML = html;
   const ad = $('#tadd');
   if (ad) ad.onclick = () => run(async () => {
@@ -624,10 +626,10 @@ async function route() {
   clearInterval(S.poll); S.poll = null;
   view().onclick = null; $('#top').onclick = null;
   const h = location.hash.replace(/^#\/?/, ''), [p, id] = h.split('/');
-  const routes = { '': vHome, m: () => vMatch(+id), new: vNew, tours: vTours, t: () => vTour(+id), 'tour-new': vTourNew, players: vPlayers, p: () => vPlayer(+id), teams: vTeams, team: () => vTeam(+id), me: vMe };
+  const routes = { '': vHome, m: () => vMatch(+id), new: () => vNew(+id || 0), tours: vTours, t: () => vTour(+id), 'tour-new': vTourNew, players: vPlayers, p: () => vPlayer(+id), teams: vTeams, team: () => vTeam(+id), me: vMe };
   const fn = routes[p] || vHome;
   $('#app').toggleAttribute('data-wide', ['', 'm', 't', 'tours', 'players', 'p', 'teams', 'team'].includes(routes[p] ? p : ''));   // lists and matches use the whole screen on a laptop or TV
-  if ((p === 'new' || p === 'tour-new') && !S.user) S.after = '#/' + p;
+  if ((p === 'new' || p === 'tour-new') && !S.user) S.after = '#/' + h;
   try { await fn(); window.scrollTo(0, 0); }
   catch (e) { setTop(TN.name, TN.club, { back: p ? '#/' : null }); view().innerHTML = `<div class="card"><h2 class="sec">This page could not load</h2><p class="muted">${esc(e.message)}</p><p style="margin-top:12px"><button class="btn" onclick="location.reload()">Try again</button></p></div>`; }
 }

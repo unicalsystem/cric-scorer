@@ -56,6 +56,14 @@ try {
         break;
     case 'match_new':
         tn_require();
+        // "tour_id": the match is created straight into that round-robin tournament (an admin or the tournament's owner)
+        $tour = int_in($in, 'tour_id') ? row('SELECT * FROM tn_tours WHERE id=?', [int_in($in, 'tour_id')]) : null;
+        if (int_in($in, 'tour_id')) {
+            if (!$tour) fail('That tournament was not found', 404);
+            if (!$u['tn_admin'] && (int)$tour['owner_id'] !== (int)$u['id']) fail('Only a club admin can add matches to a tournament', 403);
+            if ($tour['kind'] !== 'rr') fail('A knockout draw is fixed when it is made; matches can be added to a round-robin tournament only.');
+            $in['doubles'] = (bool)$tour['doubles'];
+        }
         $doubles = !empty($in['doubles']);
         [$a1, $a2] = tn_side(str_in($in, 'a', 170), $doubles, (int)$u['id']);
         [$b1, $b2] = tn_side(str_in($in, 'b', 170), $doubles, (int)$u['id']);
@@ -66,6 +74,10 @@ try {
           [$u['id'], $doubles ? 1 : 0, $a1, $a2, $b1, $b2, tn_side_name($a1, $a2), tn_side_name($b1, $b2), json_encode(tn_format($in['format'] ?? 'bo3')),
            !empty($in['first_srv']) ? 1 : 0, str_in($in, 'court', 40) ?: null, $when]);
         $out = ['id' => lastId()];
+        if ($tour) {
+            try { tn_match_to_tour(row('SELECT * FROM tn_matches WHERE id=?', [$out['id']]), (int)$tour['id']); }
+            catch (Throwable $e) { q('DELETE FROM tn_matches WHERE id=?', [$out['id']]); throw $e; }   // e.g. the two are in different groups
+        }
         // a team picked on the form goes to the players of that side who are not in a team yet
         if (int_in($in, 'team_a')) tn_assign_team([$a1, $a2], int_in($in, 'team_a'), true);
         if (int_in($in, 'team_b')) tn_assign_team([$b1, $b2], int_in($in, 'team_b'), true);
@@ -204,7 +216,7 @@ try {
         $ms = rows('SELECT * FROM tn_matches WHERE tour_id=? ORDER BY round, slot', [$t['id']]);
         $rounds = $ms ? max(array_map(fn($m) => (int)$m['round'], $ms)) : 0;
         $out = ['tour' => ['id' => (int)$t['id'], 'name' => $t['name'], 'kind' => $t['kind'], 'doubles' => (bool)$t['doubles'], 'groups' => (int)$t['grp_count'],
-                'format_label' => tn_format_label(tn_format($t['format'])), 'rounds' => $rounds,
+                'format_label' => tn_format_label(tn_format($t['format'])), 'format' => tn_format($t['format']), 'rounds' => $rounds,
                 'can_edit' => $u && ($u['tn_admin'] || (int)$t['owner_id'] === (int)$u['id'])],
             'matches' => array_map(function ($m) use ($u, $t, $rounds) {
                 $o = tn_match_out($m, $u, false) + ['slot' => (int)$m['slot']];
