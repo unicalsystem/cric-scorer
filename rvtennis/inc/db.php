@@ -40,6 +40,10 @@ function tn_schema(): void {
     $done = true;
     if (!val("SHOW TABLES LIKE 'tn_matches'")) tn_schema_v1();
     if (!val("SHOW TABLES LIKE 'tn_teams'")) tn_schema_teams();
+    if (!val("SHOW TABLES LIKE 'tn_meta'")) {
+        db()->exec("CREATE TABLE IF NOT EXISTS tn_meta (k VARCHAR(40) PRIMARY KEY, v TEXT NULL, at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        tn_fix_first_to_five();
+    }
 }
 /** v1.1: club teams (with their logos) and which team each player belongs to */
 function tn_schema_teams(): void {

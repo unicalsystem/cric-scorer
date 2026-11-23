@@ -227,3 +227,27 @@ function tn_standings(int $tid): array {
     usort($tab, fn($x, $y) => [$x['grp'], $y['w'], $y['sf'] - $y['sa'], $y['gf'] - $y['ga'], $x['l']] <=> [$y['grp'], $x['w'], $x['sf'] - $x['sa'], $x['gf'] - $x['ga'], $y['l']]);
     return $tab;
 }
+
+/** One-off, 23 Nov 2026 (runs once, when v1.3.1 is first opened): the club plays "5 out of 9" - first to 5 games - but the
+    matches in progress were created with the standard set to 6, so they did not finish at 5. Every live match that is still
+    in its first set with a side on 5 or more games is switched to "first to 5 games" and re-counted, which declares the
+    side that reached 5 first. Nothing else is touched; what was changed is noted in tn_meta. */
+function tn_fix_first_to_five(): void {
+    $done = [];
+    try {
+        foreach (rows("SELECT * FROM tn_matches WHERE status='live'") as $m) {
+            $st = json_decode((string)$m['state'], true) ?: [];
+            if (!empty($st['sets']) || max($st['games'] ?? [0, 0]) < 5) continue;
+            $f = ['best' => 1, 'games' => 5, 'lead' => false, 'final' => 'set'] + tn_format($m['format']);
+            $f = tn_format($f);
+            $eng = new TnMatch($f, (bool)$m['doubles'], (int)$m['first_srv']); $kept = [];
+            foreach (json_decode((string)$m['events'], true) ?: [] as $e) { if ($eng->over) break; $eng->apply($e); $kept[] = $e; }
+            if (!$eng->over) continue;
+            q('UPDATE tn_matches SET format=? WHERE id=?', [json_encode($f), $m['id']]);
+            $m['format'] = json_encode($f);
+            $r = tn_store($m, $kept);
+            $done[] = ['id' => (int)$m['id'], 'was' => $m['format'] === null ? '' : tn_format_label(tn_format($st['format'] ?? [])), 'result' => $r['summary'], 'winner' => (int)$r['winner']];
+        }
+    } catch (Throwable $e) { error_log('RV Tennis first-to-five fix: ' . $e->getMessage()); }
+    q('INSERT IGNORE INTO tn_meta (k, v) VALUES (?,?)', ['fix_first_to_five', json_encode($done)]);
+}
