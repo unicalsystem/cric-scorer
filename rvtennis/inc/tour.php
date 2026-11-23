@@ -152,10 +152,11 @@ function tn_tour_create(array $in, array $u): int {
     $ff = $finalRounds ? tn_format($in['final_format'] ?? $f) : $f;
     $lines = is_array($in['entries'] ?? null) ? $in['entries'] : preg_split('/\R/', (string)($in['entries'] ?? ''));
     $lines = array_values(array_filter(array_map('trim', $lines), 'strlen'));
-    if (count($lines) < 2) fail('Add at least two ' . ($doubles ? 'pairs' : 'players') . ', one on each line');
+    // a round robin may start empty: matches played on their own are added to it afterwards (see tn_match_to_tour)
+    if (count($lines) < 2 && !($kind === 'rr' && !$lines)) fail('Add at least two ' . ($doubles ? 'pairs' : 'players') . ', one on each line' . ($kind === 'rr' ? ', or none to add matches later' : ''));
     if (count($lines) > 64) fail('A tournament can have up to 64 entries');
     $groups = $kind === 'rr' ? max(1, min(8, int_in($in, 'groups', 1))) : 1;
-    if ($kind === 'rr' && count($lines) < $groups * 2) fail("With $groups groups you need at least " . ($groups * 2) . ' entries');
+    if ($kind === 'rr' && $lines && count($lines) < $groups * 2) fail("With $groups groups you need at least " . ($groups * 2) . ' entries');
     db()->beginTransaction();
     try {
         q('INSERT INTO tn_tours (name, kind, doubles, format, grp_count, owner_id) VALUES (?,?,?,?,?,?)', [$name, $kind, $doubles ? 1 : 0, json_encode($f), $groups, $u['id']]);
@@ -203,6 +204,47 @@ function tn_tour_create(array $in, array $u): int {
         }
         db()->commit();
         return $tid;
+    } catch (Throwable $e) { db()->rollBack(); throw $e; }
+}
+/** The entry of a round-robin tournament for these players (either order), added to the table if they are not in it yet */
+function tn_entry_for(array $t, $p1, $p2): array {
+    $p1 = (int)$p1; $p2 = $p2 ? (int)$p2 : null;
+    foreach (rows('SELECT * FROM tn_entries WHERE tour_id=?', [$t['id']]) as $e) {
+        $x = [(int)$e['p1'], $e['p2'] ? (int)$e['p2'] : null]; $y = [$p1, $p2];
+        sort($x); sort($y);
+        if ($x === $y) return $e;
+    }
+    q('INSERT INTO tn_entries (tour_id, pos, grp, p1, p2, name) VALUES (?,?,?,?,?,?)',
+      [$t['id'], (int)val('SELECT COALESCE(MAX(pos), 0) + 1 FROM tn_entries WHERE tour_id=?', [$t['id']]), 0, $p1, $p2, tn_side_name($p1, $p2)]);
+    return row('SELECT * FROM tn_entries WHERE id=?', [lastId()]);
+}
+/** Put a match that was set up on its own into a round-robin tournament, with its score; $tid = 0 takes it out again.
+    Both sides join the table if they are not in it. An unplayed fixture between the same two is replaced by this match. */
+function tn_match_to_tour(array $m, int $tid): void {
+    if ($tid === 0) {
+        if (!$m['tour_id']) return;
+        if (val('SELECT kind FROM tn_tours WHERE id=?', [$m['tour_id']]) === 'ko') fail('A knockout match stays in its draw');
+        q('UPDATE tn_matches SET tour_id=NULL, round=NULL, slot=NULL, grp=NULL, entry_a=NULL, entry_b=NULL WHERE id=?', [$m['id']]);
+        // entries that no longer have any match (they came in with this one) leave the table
+        q('DELETE e FROM tn_entries e WHERE e.tour_id=? AND NOT EXISTS (SELECT 1 FROM tn_matches x WHERE x.tour_id=e.tour_id AND (x.entry_a=e.id OR x.entry_b=e.id))', [$m['tour_id']]);
+        return;
+    }
+    $t = row('SELECT * FROM tn_tours WHERE id=?', [$tid]);
+    if (!$t) fail('That tournament was not found', 404);
+    if ($t['kind'] !== 'rr') fail('Matches can be added to a round-robin tournament only. A knockout draw is fixed when it is made.');
+    if ($m['tour_id']) fail((int)$m['tour_id'] === $tid ? 'This match is already in that tournament' : 'This match is in another tournament. Take it out of that one first.');
+    if ((int)$t['doubles'] !== (int)$m['doubles']) fail('This is a ' . ($m['doubles'] ? 'doubles' : 'singles') . ' match and the tournament is ' . ($t['doubles'] ? 'doubles' : 'singles'));
+    if (!$m['a1'] || !$m['b1']) fail('Both sides of the match need their players');
+    db()->beginTransaction();
+    try {
+        $ea = tn_entry_for($t, $m['a1'], $m['a2']); $eb = tn_entry_for($t, $m['b1'], $m['b2']);
+        if ((int)$ea['grp'] !== (int)$eb['grp']) fail('These two are in different groups of the tournament, so they do not play each other in it');
+        $fx = row("SELECT * FROM tn_matches WHERE tour_id=? AND status='scheduled' AND (events IS NULL OR events='[]') AND ((entry_a=? AND entry_b=?) OR (entry_a=? AND entry_b=?)) ORDER BY round LIMIT 1",
+                  [$tid, $ea['id'], $eb['id'], $eb['id'], $ea['id']]);
+        if ($fx) { $round = (int)$fx['round']; $slot = (int)$fx['slot']; q('DELETE FROM tn_matches WHERE id=?', [$fx['id']]); }
+        else { $round = max(1, (int)val('SELECT MAX(round) FROM tn_matches WHERE tour_id=?', [$tid])); $slot = (int)val('SELECT COALESCE(MAX(slot), -1) + 1 FROM tn_matches WHERE tour_id=?', [$tid]); }
+        q('UPDATE tn_matches SET tour_id=?, round=?, slot=?, grp=?, entry_a=?, entry_b=? WHERE id=?', [$tid, $round, $slot, (int)$ea['grp'], $ea['id'], $eb['id'], $m['id']]);
+        db()->commit();
     } catch (Throwable $e) { db()->rollBack(); throw $e; }
 }
 /** Group tables for a round robin: played, won, lost, sets and games, sorted the usual way */

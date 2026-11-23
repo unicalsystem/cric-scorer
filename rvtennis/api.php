@@ -13,7 +13,7 @@ try {
         if (stripos((string)($_SERVER['CONTENT_TYPE'] ?? ''), 'application/json') === false) fail('Bad request');
         $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
     }
-    $reads = ['boot', 'home', 'match', 'tours', 'tour', 'players', 'player', 'admins', 'teams', 'team'];
+    $reads = ['boot', 'home', 'loose', 'match', 'tours', 'tour', 'players', 'player', 'admins', 'teams', 'team'];
     if (!$post && !in_array($a, $reads, true)) fail('Bad request', 405);
     tn_schema();
     $u = tn_user();
@@ -176,6 +176,14 @@ try {
             tn_store($m, $kept);
         }
         $out = ['match' => tn_match_out($mget((int)$m['id']), $u)];
+        break;
+    case 'match_tour':   // admin: put a match played on its own into a round-robin tournament ("tour_id": 0 takes it out)
+        tn_require_admin();
+        tn_match_to_tour($mget(int_in($in, 'id')), int_in($in, 'tour_id'));
+        $out = ['match' => tn_match_out($mget(int_in($in, 'id')), $u)];
+        break;
+    case 'loose':   // matches that are not in any tournament, newest first (for "Add matches" on a tournament)
+        $out = ['matches' => $mini(rows("$list WHERE m.tour_id IS NULL ORDER BY m.id DESC LIMIT 100"))];
         break;
     case 'match_delete':
         $m = $mscore(int_in($in, 'id'));

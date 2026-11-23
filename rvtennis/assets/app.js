@@ -340,6 +340,7 @@ async function vMatch(id) {
         <button data-o="tags">${pref('tags') ? 'Stop tagging points' : 'Tag points (winner, forced or unforced error)'}</button>
         <button data-o="court">Court and start time</button><button data-o="scorer">Hand scoring to someone else</button>
         <button data-o="voice">${S.voice ? 'Stop reading the score aloud' : 'Read the score aloud'}</button>
+        ${S.user && S.user.admin ? (m.tour_id ? (m.round_name && !/Round robin|Group/.test(m.round_name) ? '' : '<button data-o="untour">Take out of the tournament</button>') : '<button data-o="tour">Add to a tournament</button>') : ''}
         ${m.tour_id ? '' : '<button data-o="del" class="danger">Delete this match</button>'}</div>`);
       d.onclick = ev => run(async () => {
         const o = (ev.target.closest('[data-o]') || {}).dataset; if (!o) return;
@@ -354,6 +355,14 @@ async function vMatch(id) {
           return;
         }
         if (/^(ret|wo|def|end)/.test(o.o)) { const w = +o.o.slice(-1); if (await confirmSheet('End the match?', `${w ? m.b : m.a} is recorded as the winner. You can undo this.`, 'End match')) { m = (await api('match_end', { id, w, why: o.o.slice(0, -1) })).match; paint(); } return; }
+        if (o.o === 'untour') { if (await confirmSheet('Take this match out of ' + m.tour + '?', 'The match and its score stay; it no longer counts in the tournament table.', 'Take out')) { m = (await api('match_tour', { id, tour_id: 0 })).match; paint(); } return; }
+        if (o.o === 'tour') {
+          const ts = (await api('tours')).tours.filter(x => x.kind === 'rr' && !!+x.doubles === m.doubles);
+          const s2 = sheet(`<h2>Add to a tournament</h2><p class="muted small">${ts.length ? 'The score comes with it, and both sides join the table.' : 'There is no round-robin ' + (m.doubles ? 'doubles' : 'singles') + ' tournament yet. Set one up under Tournaments.'}</p>
+            <div class="list">${ts.map(x => `<button data-t="${x.id}">${esc(x.name)}</button>`).join('')}</div><div class="btns"><button class="btn" data-close>Cancel</button></div>`);
+          s2.onclick = e2 => run(async () => { const b2 = e2.target.closest('[data-t]'); if (!b2) return; m = (await api('match_tour', { id, tour_id: +b2.dataset.t })).match; s2.close(); toast('Added to ' + m.tour); paint(); });
+          return;
+        }
         if (o.o === 'voice') { S.voice = !S.voice; localStorage.setItem('tn_voice', S.voice ? '1' : '0'); if (S.voice) say('Score announcements on'); return toast(S.voice ? 'The score is read aloud after each point' : 'Voice off'); }
         if (o.o === 'del') { if (await confirmSheet('Delete this match?', 'The score and stats are removed for everyone. This cannot be undone.', 'Delete match', true)) { await api('match_delete', { id }); go('#/'); } return; }
         if (o.o === 'court') {
@@ -400,8 +409,9 @@ async function vTour(id) {
         ${rows.map((r, i) => `<tr><td class="pos">${i + 1}</td><td class="nm">${esc(r.name)}</td><td>${r.p}</td><td class="w">${r.w}</td><td>${r.l}</td><td>${r.sf}–${r.sa}</td><td>${r.gf}–${r.ga}</td></tr>`).join('')}</tbody></table></div>`;
     }
     html += '<p class="small muted" style="margin:8px 2px 0">Ranked by wins, then sets won minus lost, then games.</p>';
+    if (!d.matches.length) html += `<div class="card" style="margin-top:12px"><p class="muted">No matches in this tournament yet.${t.can_edit ? ' Add matches that were set up on their own with the button below, or from a match\'s options (⋯).' : ''}</p></div>`;
     const rounds = [...new Set(d.matches.map(m => m.round))];
-    html += rounds.map(r => `<h2 class="sec">Round ${r}</h2>` + d.matches.filter(m => m.round === r).map(m => matchRow({ ...m, round_name: t.groups > 1 ? 'Group ' + String.fromCharCode(65 + m.grp) : '' })).join('')).join('');
+    html += rounds.map(r => `<h2 class="sec">${rounds.length > 1 ? 'Round ' + r : 'Matches'}</h2>` + d.matches.filter(m => m.round === r).map(m => matchRow({ ...m, round_name: t.groups > 1 ? 'Group ' + String.fromCharCode(65 + m.grp) : '' })).join('')).join('');
   } else {
     html += '<div class="draw">';
     for (let r = 1; r <= t.rounds; r++) {
@@ -411,7 +421,21 @@ async function vTour(id) {
     }
     html += '</div><p class="small muted">Swipe sideways to see every round. Winners move on automatically.</p>';
   }
+  if (t.kind === 'rr' && S.user && S.user.admin) html += `<a class="btn fab" href="javascript:void 0" id="tadd">${IC.plus} Add matches</a>`;
   view().innerHTML = html;
+  const ad = $('#tadd');
+  if (ad) ad.onclick = () => run(async () => {
+    const ms = (await api('loose')).matches.filter(m => m.doubles === t.doubles && m.status !== 'bye');
+    const s2 = sheet(`<h2>Add matches to ${esc(t.name)}</h2><p class="muted small">${ms.length ? 'Matches set up on their own, with their scores. Both sides join the table.' : 'There are no ' + (t.doubles ? 'doubles' : 'singles') + ' matches outside a tournament.'}</p>
+      <div class="list">${ms.map(m => `<label style="display:flex;gap:10px;align-items:center;padding:10px 4px"><input type="checkbox" value="${m.id}" checked> <span>${esc(m.a)} v ${esc(m.b)} <span class="muted small">${m.status === 'done' ? esc(m.summary || '') : m.status}</span></span></label>`).join('')}</div>
+      <div class="btns"><button class="btn" data-close>Cancel</button>${ms.length ? '<button class="btn pri" id="e-save">Add</button>' : ''}</div>`);
+    const sv = $('#e-save', s2);
+    if (sv) sv.onclick = () => run(async () => {
+      const ids = [...s2.querySelectorAll('input:checked')].map(i => +i.value);
+      for (const mid of ids) await api('match_tour', { id: mid, tour_id: id });
+      s2.close(); toast(ids.length + (ids.length === 1 ? ' match added' : ' matches added')); route();
+    });
+  });
   const b = $('#tdel');
   if (b) b.onclick = () => run(async () => { if (await confirmSheet('Delete this tournament?', 'All its matches and scores are removed for everyone. This cannot be undone.', 'Delete tournament', true)) { await api('tour_delete', { id }); go('#/tours'); } });
   S.poll = setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]') && d.matches.some(m => m.status === 'live')) route(); }, 20000);
@@ -439,7 +463,7 @@ async function vTourNew() {
     $('#t-ff').hidden = $('#t-fr').value === '0';
     $('#t-ent-l').textContent = dbl ? 'Pairs, one per line' : 'Players, one per line';
     $('#t-entries').placeholder = dbl ? 'Asha / Meera\nRavi / Kiran' : 'Asha\nRavi\nKiran';
-    $('#t-ent-h').textContent = (dbl ? 'Write each pair as "Name / Name". ' : '') + 'List the strongest first: that order is the seeding.';
+    $('#t-ent-h').textContent = (dbl ? 'Write each pair as "Name / Name". ' : '') + (kind === 'rr' ? 'Leave this empty to add matches as they are played: each side joins the table with its first match.' : 'List the strongest first: that order is the seeding.');
   };
   sync(); wireFormat(); $('#t-fr').onchange = sync;
   view().onclick = e => { const b = e.target.closest('[data-kind],[data-dbl]'); if (!b) return; if (b.dataset.kind) kind = b.dataset.kind; else dbl = b.dataset.dbl === '1'; sync(); };

@@ -50,5 +50,5 @@ defined('DEFAULT_COUNTRY_CODE')   || define('DEFAULT_COUNTRY_CODE', '91');
 defined('OTP_MINUTES')            || define('OTP_MINUTES', 15);
 defined('DEBUG')                  || define('DEBUG', false);
 
-define('TN_VERSION', '1.3.1');
+define('TN_VERSION', '1.4.0');
 date_default_timezone_set(defined('APP_TIMEZONE') ? APP_TIMEZONE : 'Asia/Kolkata');
