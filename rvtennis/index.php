@@ -50,7 +50,19 @@ $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
   <nav id="tabs" aria-label="Sections"></nav>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
-<noscript><p style="padding:24px">RV Tennis needs JavaScript switched on.</p></noscript>
+<noscript><div style="padding:24px"><p>RV Tennis needs JavaScript switched on to score. Matches in progress:</p><?php
+try {
+    require_once __DIR__ . '/inc/db.php';
+    tn_schema();
+    $live = rows("SELECT id, a_name, b_name, format, state FROM tn_matches WHERE status='live' ORDER BY id");
+    if (!$live) echo '<p>No match is live right now.</p>';
+    foreach ($live as $lm) {
+        $ls = json_decode((string)$lm['state'], true) ?: [];
+        $sc = trim(tn_summary($ls['sets'] ?? []) . ' ' . implode('-', $ls['games'] ?? [0, 0]));
+        echo '<p>Match ' . (int)$lm['id'] . ': ' . $h($lm['a_name']) . ' v ' . $h($lm['b_name']) . ', ' . $h($sc) . ' (' . $h(tn_format_label(tn_format($lm['format']))) . ')</p>';
+    }
+} catch (Throwable $e) { /* the app itself reports problems */ }
+?></div></noscript>
 <script>window.TN = { v: <?= json_encode($v) ?>, open: <?= $mid ?: 'null' ?>, logo: <?= json_encode($logo) ?>, name: <?= json_encode(TN_NAME) ?>, club: <?= json_encode(TN_CLUB) ?> };</script>
 <script src="assets/app.js?v=<?= $v ?>" defer></script>
 </body>

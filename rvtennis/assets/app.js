@@ -126,12 +126,14 @@ async function vHome() {
 /* ---------- New match ---------- */
 /* Every rule that differs between tournaments is a setting; the defaults are standard tennis (best of 3, sets to 6,
    advantage scoring, 7-point tiebreak at 6-6, full deciding set). */
-const FORMAT_DEFAULT = { best: 3, games: 6, noad: false, tb_at: 6, tb_to: 7, final: 'set', final_to: 10 };
+const FORMAT_DEFAULT = { best: 3, games: 6, lead: true, noad: false, tb_at: 6, tb_to: 7, final: 'set', final_to: 10 };
 function formatFields(x = '', f = FORMAT_DEFAULT) {
   const o = (v, cur, label) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${label}</option>`;
   return `<div class="fmt" data-fmt="${x}">
-    <label class="f">Match format<select data-f="best">${o(3, f.best, 'Best of 3 sets')}${o(1, f.best, '1 set (a single set decides the match)')}${o(5, f.best, 'Best of 5 sets')}</select></label>
-    <label class="f">Games per set<select data-f="games">${o(6, f.games, '6 games (standard)')}${o(4, f.games, '4 games (short set / Fast4)')}${o(8, f.games, '8 games (pro set)')}</select></label>
+    <label class="f">Match format<select data-f="best">${o(3, f.best, 'Best of 3 sets')}${o(1, f.best, '1 set (a single set decides the match)')}${o(5, f.best, 'Best of 5 sets')}${o(7, f.best, 'Best of 7 sets')}${o(9, f.best, 'Best of 9 sets (first to 5)')}</select></label>
+    <label class="f">Games per set<select data-f="games">${o(6, f.games, '6 games (standard)')}${o(4, f.games, '4 games (short set / Fast4)')}${o(5, f.games, '5 games')}${o(8, f.games, '8 games (pro set)')}</select></label>
+    <label class="f">A set is won<select data-f="lead">${o(1, f.lead === false ? 0 : 1, 'With a two-game lead (standard)')}${o(0, f.lead === false ? 0 : 1, 'By the first side to reach that many games')}</select>
+      <span class="hint" data-f="leadhint"></span></label>
     <label class="f">Deuce rule<select data-f="noad">${o(0, f.noad ? 1 : 0, 'Advantage (standard)')}${o(1, f.noad ? 1 : 0, 'No-ad: one deciding point at 40–40')}</select></label>
     <label class="f">Set tiebreak<select data-f="tb">${o(7, f.tb_at ? f.tb_to : 0, '7-point tiebreak at games-all')}${o(10, f.tb_at ? f.tb_to : 0, '10-point tiebreak at games-all')}${o(0, f.tb_at ? f.tb_to : 0, 'No tiebreak (advantage set)')}</select>
       <span class="hint" data-f="tbhint"></span></label>
@@ -142,8 +144,11 @@ function wireFormat(root = document) {
     const g = k => el.querySelector(`[data-f="${k}"]`);
     const sync = () => {
       const n = g('games').value, one = g('best').value === '1';
+      const lead = g('lead').value === '1';
+      g('leadhint').textContent = lead ? '' : `First to ${n} games, that is ${n} out of ${2 * n - 1}. At ${n - 1}–${n - 1} the next game decides the set.`;
+      g('tb').closest('label').hidden = !lead;
       g('tbhint').textContent = g('tb').value === '0' ? `Play on until one side leads by two games.` : `Played at ${n}–${n}.`;
-      g('finlabel').textContent = one ? 'The match is played as' : `Deciding ${g('best').value === '5' ? '5th' : '3rd'} set`;
+      g('finlabel').textContent = one ? 'The match is played as' : `Deciding ${g('best').value === '3' ? '3rd' : g('best').value + 'th'} set`;
     };
     el.onchange = sync; sync();
   });
@@ -151,7 +156,7 @@ function wireFormat(root = document) {
 function readFormat(x = '', root = document) {
   const el = root.querySelector(`.fmt[data-fmt="${x}"]`), g = k => el.querySelector(`[data-f="${k}"]`).value;
   const games = +g('games'), tb = +g('tb'), fin = g('final');
-  return { best: +g('best'), games, noad: g('noad') === '1', tb_at: tb ? games : 0, tb_to: tb || 7, final: fin === 'set' ? 'set' : 'tb', final_to: fin === 'tb7' ? 7 : 10 };
+  return { best: +g('best'), games, lead: g('lead') === '1', noad: g('noad') === '1', tb_at: tb ? games : 0, tb_to: tb || 7, final: fin === 'set' ? 'set' : 'tb', final_to: fin === 'tb7' ? 7 : 10 };
 }
 async function vNew() {
   setTop('New match', '', { back: '#/' });
@@ -226,7 +231,7 @@ async function vMatch(id) {
       else if (st.tb && st.pts[0] + st.pts[1] === 0) flag = `<div class="flag">${st.mtb ? `Match tiebreak, first to ${st.format.final_to}` : `Tiebreak, first to ${st.format.tb_to}`}</div>`;
       else flag = `<div class="flag">${nSets ? `Set ${nSets + 1}` : 'First set'}${m.court ? ', ' + esc(m.court) : ''}</div>`;
     }
-    const result = st.over ? `<div class="result">${badge(m.teams[st.winner], 'xl')}<div class="who">${esc(st.winner ? m.b : m.a)} won</div><div class="sum">${esc(m.summary || '')}${st.outcome === 'ret' ? ' (opponent retired)' : st.outcome === 'wo' ? ' (walkover)' : st.outcome === 'def' ? ' (opponent defaulted)' : ''}</div></div>` : '';
+    const result = st.over ? `<div class="result">${badge(m.teams[st.winner], 'xl')}<div class="who">${esc(st.winner ? m.b : m.a)} won</div><div class="sum">${esc(m.summary || '')}${st.outcome === 'ret' ? ' (opponent retired)' : st.outcome === 'wo' ? ' (walkover)' : st.outcome === 'def' ? ' (opponent defaulted)' : st.outcome === 'end' ? ' (match ended on this score)' : ''}</div></div>` : '';
     // the court: side B plays from the top, side A from the bottom
     let court = '';
     const waiting = !m.a || !m.b;
@@ -328,8 +333,9 @@ async function vMatch(id) {
       const d = sheet(`<h2>Match options</h2><div class="list">
         ${live ? `<button data-o="typed">Enter the final score</button><button data-o="ret0">${esc(m.b)} retired: ${esc(m.a)} wins</button><button data-o="ret1">${esc(m.a)} retired: ${esc(m.b)} wins</button>
           <button data-o="wo0">Walkover to ${esc(m.a)}</button><button data-o="wo1">Walkover to ${esc(m.b)}</button>
-          <button data-o="def0">${esc(m.b)} defaulted: ${esc(m.a)} wins</button><button data-o="def1">${esc(m.a)} defaulted: ${esc(m.b)} wins</button>` : ''}
-        ${m.status === 'scheduled' ? '<button data-o="fmt">Match format and rules</button>' : ''}
+          <button data-o="def0">${esc(m.b)} defaulted: ${esc(m.a)} wins</button><button data-o="def1">${esc(m.a)} defaulted: ${esc(m.b)} wins</button>
+          ${m.status === 'live' ? `<button data-o="end0">End the match now: ${esc(m.a)} wins on this score</button><button data-o="end1">End the match now: ${esc(m.b)} wins on this score</button>` : ''}
+          <button data-o="fmt">Match format and rules</button>` : ''}
         <button data-o="serve">${pref('serve') ? 'Stop tracking 1st and 2nd serves' : 'Track 1st and 2nd serves (Fault, Let)'}</button>
         <button data-o="tags">${pref('tags') ? 'Stop tagging points' : 'Tag points (winner, forced or unforced error)'}</button>
         <button data-o="court">Court and start time</button><button data-o="scorer">Hand scoring to someone else</button>
@@ -341,13 +347,13 @@ async function vMatch(id) {
         if (o.o === 'typed') return typedResult();
         if (o.o === 'serve' || o.o === 'tags') { localStorage.setItem('tn_' + o.o, pref(o.o) ? '0' : '1'); return paint(); }
         if (o.o === 'fmt') {
-          const s2 = sheet(`<h2>Match format and rules</h2><p class="muted small">These can change until the first point is played.</p>${formatFields('e', m.format)}
+          const s2 = sheet(`<h2>Match format and rules</h2><p class="muted small">${m.status === 'live' ? 'The points already scored are counted again under the new rules. If a side already has the games or sets it now needs, the match ends there.' : 'These apply from the first point.'}</p>${formatFields('e', m.format)}
             <div class="btns"><button class="btn" data-close>Cancel</button><button class="btn pri" id="e-save">Save</button></div>`);
           wireFormat(s2);
           $('#e-save', s2).onclick = () => run(async () => { m = (await api('match_edit', { id, format: readFormat('e', s2) })).match; s2.close(); paint(); });
           return;
         }
-        if (/^(ret|wo|def)/.test(o.o)) { const w = +o.o.slice(-1); if (await confirmSheet('End the match?', `${w ? m.b : m.a} is recorded as the winner. You can undo this.`, 'End match')) { m = (await api('match_end', { id, w, why: o.o.slice(0, -1) })).match; paint(); } return; }
+        if (/^(ret|wo|def|end)/.test(o.o)) { const w = +o.o.slice(-1); if (await confirmSheet('End the match?', `${w ? m.b : m.a} is recorded as the winner. You can undo this.`, 'End match')) { m = (await api('match_end', { id, w, why: o.o.slice(0, -1) })).match; paint(); } return; }
         if (o.o === 'voice') { S.voice = !S.voice; localStorage.setItem('tn_voice', S.voice ? '1' : '0'); if (S.voice) say('Score announcements on'); return toast(S.voice ? 'The score is read aloud after each point' : 'Voice off'); }
         if (o.o === 'del') { if (await confirmSheet('Delete this match?', 'The score and stats are removed for everyone. This cannot be undone.', 'Delete match', true)) { await api('match_delete', { id }); go('#/'); } return; }
         if (o.o === 'court') {

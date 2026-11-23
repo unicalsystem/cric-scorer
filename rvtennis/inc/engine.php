@@ -9,13 +9,16 @@
             final  'set' | 'tb'     deciding set played in full, or replaced by a match tiebreak
             final_to 10             points to win the match tiebreak
             noad   bool             at deuce the next point wins the game
+            lead   bool             true (standard): a set needs a two-game lead. false: the first side to reach "games"
+                                    wins the set - "5 out of 9" is games = 5, lead = false (4-4 is decided by the 9th game)
    Event:   ['w' => 0|1, 'k' => ''|'ace'|'df'|'win'|'fe'|'ue']   a point won by side 0 (A) or 1 (B); k = how it ended
             ['t' => 'f']                            a service fault: the first moves to 2nd serve, the second is a double fault
             ['t' => 'let']                          a service let: the serve is replayed, nothing changes (counted only)
             ['t' => 'ord', 's' => [0|1, 0|1], 'r' => [0|1, 0|1]]   doubles, start of a set only: which partner of each pair
                                                     serves first (s) and which receives in the deuce court (r)
             ['t' => 'dc', 'c' => 0|1]               no-ad deciding point: the receiver picks the deuce (0) or ad (1) court
-            ['t' => 'ret'|'wo'|'def', 'w' => 0|1]   retirement / walkover / default, 'w' is the winner (always the last event) */
+            ['t' => 'ret'|'wo'|'def'|'end', 'w' => 0|1]   retirement / walkover / default / ended by the scorer on the current
+                                                    score; 'w' is the winner (always the last event) */
 
 const TN_PRESETS = [
     'bo3'    => ['label' => 'Best of 3 sets',                      'best' => 3, 'games' => 6, 'tb_at' => 6, 'tb_to' => 7, 'final' => 'set', 'final_to' => 10, 'noad' => false],
@@ -34,10 +37,11 @@ function tn_format($f): array {
     $base = TN_PRESETS[$f['preset'] ?? ''] ?? TN_PRESETS['bo3'];
     $o = [];
     $o['preset'] = isset(TN_PRESETS[$f['preset'] ?? '']) ? $f['preset'] : 'custom';
-    $o['best'] = in_array((int)($f['best'] ?? $base['best']), [1, 3, 5], true) ? (int)($f['best'] ?? $base['best']) : 3;
+    $o['best'] = in_array((int)($f['best'] ?? $base['best']), [1, 3, 5, 7, 9], true) ? (int)($f['best'] ?? $base['best']) : 3;
+    $o['lead'] = !array_key_exists('lead', $f) || !empty($f['lead']);
     $o['games'] = max(1, min(12, (int)($f['games'] ?? $base['games'])));
     $tb = (int)($f['tb_at'] ?? $base['tb_at']);
-    $o['tb_at'] = $tb <= 0 ? 0 : max($o['games'] - 1, min($o['games'], $tb));
+    $o['tb_at'] = $tb <= 0 || !$o['lead'] ? 0 : max($o['games'] - 1, min($o['games'], $tb));
     $o['tb_to'] = max(5, min(15, (int)($f['tb_to'] ?? $base['tb_to'])));
     $o['final'] = ($f['final'] ?? $base['final']) === 'tb' ? 'tb' : 'set';
     $o['final_to'] = max(5, min(21, (int)($f['final_to'] ?? $base['final_to'])));
@@ -48,9 +52,12 @@ function tn_format_label(array $f): string {
     $f = tn_format($f);
     if ($f['best'] === 1 && $f['final'] === 'tb') $s = "Single {$f['final_to']}-point tiebreak";
     else {
-        $s = $f['best'] === 1 ? "One set to {$f['games']}" : "Best of {$f['best']}, sets to {$f['games']}";
+        $nine = $f['games'] * 2 - 1;
+        if (!$f['lead']) $s = $f['best'] === 1 ? "First to {$f['games']} games (best of $nine)" : "Best of {$f['best']} sets, each first to {$f['games']} games";
+        else $s = $f['best'] === 1 ? "One set to {$f['games']}" : "Best of {$f['best']}, sets to {$f['games']}";
         if ($f['best'] > 1 && $f['final'] === 'tb') $s .= ", {$f['final_to']}-point decider";
-        if ($f['tb_at'] === 0) $s .= ', no tiebreak';
+        if (!$f['lead']) { /* no tiebreak is possible */ }
+        elseif ($f['tb_at'] === 0) $s .= ', no tiebreak';
         elseif ($f['tb_at'] !== $f['games']) $s .= ", tiebreak at {$f['tb_at']}-all";
         if ($f['tb_at'] > 0 && $f['tb_to'] !== 7) $s .= ", {$f['tb_to']}-point tiebreaks";
     }
@@ -148,7 +155,12 @@ class TnMatch {
             if (!$this->fault) { $this->fault = true; return; }
             $e = ['w' => 1 - $this->server()[0], 'k' => 'df'];   // second fault: double fault, point to the receiver
         } elseif ($t !== null) {
-            $this->over = true; $this->winner = !empty($e['w']) ? 1 : 0; $this->outcome = in_array($t, ['wo', 'def'], true) ? $t : 'ret';
+            $this->over = true; $this->winner = !empty($e['w']) ? 1 : 0; $this->outcome = in_array($t, ['wo', 'def', 'end'], true) ? $t : 'ret';
+            if ($t === 'end' && $this->games[0] !== $this->games[1] && !$this->inTb) {   // the unfinished set stands as played
+                $lw = $this->games[0] > $this->games[1] ? 0 : 1;
+                $this->sets[] = ['a' => $this->games[0], 'b' => $this->games[1], 'tb' => null, 'mtb' => false];
+                $this->setsWon[$lw]++; $this->games = [0, 0]; $this->pts = [0, 0];
+            }
             return;
         }
         $w = !empty($e['w']) ? 1 : 0; $l = 1 - $w;
@@ -190,7 +202,7 @@ class TnMatch {
         $this->pts = [0, 0];
         $this->serveIdx++;
         $g = $this->games; $G = $this->f['games'];
-        $setWon = $wasTb || ($g[$w] >= $G && $g[$w] - $g[$l] >= 2);
+        $setWon = $wasTb || ($g[$w] >= $G && (!$this->f['lead'] || $g[$w] - $g[$l] >= 2));
         if (!$setWon) {
             if ($this->f['tb_at'] > 0 && $g[0] === $this->f['tb_at'] && $g[1] === $this->f['tb_at']) { $this->inTb = true; $this->tbTo = $this->f['tb_to']; }
             return;

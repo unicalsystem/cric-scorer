@@ -1,6 +1,6 @@
 /* RV Tennis - makes the site installable and lets the app open with a weak signal.
    Pages and assets: fresh copy from the network first, the saved copy if the network fails. Scores (api.php) are never saved. */
-const CACHE = 'rvtennis-v1.2.0';
+const CACHE = 'rvtennis-v1.3.0';
 const SHELL = ['./', 'assets/app.css', 'assets/app.js', 'assets/logo.png', 'assets/icon-192.png', 'manifest.json'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));

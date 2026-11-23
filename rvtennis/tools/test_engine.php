@@ -89,6 +89,18 @@ $m = new TnMatch(tn_format(['noad' => true])); play($m, 'aaabb'); $m->apply(['t'
 play($m, 'b'); $s = $m->state(); ok($s['deciding'] && $s['court'] === 'deuce', 'deciding point defaults to the deuce court');
 $m->apply(['t' => 'dc', 'c' => 1]); ok($m->state()['court'] === 'ad' && $m->state()['picked'], 'receiver picked the ad court'); play($m, 'a'); ok($m->games === [1, 0] && $m->state()['court'] === 'deuce', 'pick cleared');
 
+// "5 out of 9": first to 5 games, no two-game lead, 4-4 decided by the ninth game
+$f59 = tn_format(['best' => 1, 'games' => 5, 'lead' => false]);
+ok(tn_format_label($f59) === 'First to 5 games (best of 9)', tn_format_label($f59));
+$m = new TnMatch($f59); games($m, 'abababab'); ok(!$m->over && !$m->inTb && $m->games === [4, 4], '4-4: no tiebreak, play the ninth game');
+play($m, 'aaa'); ok($m->state()['flag']['k'] === 'mp', 'match point in the ninth game'); play($m, 'a'); ok($m->over && tn_summary($m->sets) === '5-4', '5-4 wins');
+$m = new TnMatch($f59); games($m, 'aaabaa'); ok($m->over && tn_summary($m->sets) === '5-1' && $m->n === 24, 'ends as soon as a side has 5');
+// best of 9 sets
+$m = new TnMatch(tn_format(['best' => 9, 'games' => 1, 'lead' => false])); games($m, 'aaaa'); ok(!$m->over, 'best of 9 needs 5 sets'); games($m, 'ba'); ok($m->over && $m->setsWon === [5, 1], 'first to 5 sets');
+// ended by the scorer on the current score
+$m = new TnMatch(tn_format('bo3')); games($m, 'aaaaaba'); games($m, 'aab'); $m->apply(['t' => 'end', 'w' => 0]); $s = $m->state();
+ok($s['over'] && $s['winner'] === 0 && $s['outcome'] === 'end' && tn_summary($s['sets'], 'end') === '6-1 2-1' && $s['setsWon'] === [2, 0], 'ended early: ' . tn_summary($s['sets'], 'end'));
+
 // retirement and walkover
 $m = new TnMatch(tn_format('bo3')); games($m, 'aaa'); $m->apply(['t' => 'ret', 'w' => 1]); $s = $m->state();
 ok($s['over'] && $s['winner'] === 1 && $s['outcome'] === 'ret', 'retired'); $m->apply(['w' => 0]); $m->apply(['t' => 'f']); ok($m->n === 12 && !$m->fault, 'no points after the end');

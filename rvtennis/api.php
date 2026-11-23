@@ -133,7 +133,7 @@ try {
         if ($m['status'] === 'done') fail('This match is already finished');
         if ($m['a_name'] === '' || $m['b_name'] === '') fail('This match is still waiting for a player from the previous round');
         $ev = json_decode((string)$m['events'], true) ?: [];
-        $ev[] = ['t' => in_array($in['why'] ?? '', ['wo', 'def'], true) ? $in['why'] : 'ret', 'w' => !empty($in['w']) ? 1 : 0];
+        $ev[] = ['t' => in_array($in['why'] ?? '', ['wo', 'def', 'end'], true) ? $in['why'] : 'ret', 'w' => !empty($in['w']) ? 1 : 0];
         $out = ['match' => tn_match_out(tn_store($m, $ev), $u)];
         break;
     case 'match_result':   // type in a finished score instead of scoring point by point
@@ -165,6 +165,16 @@ try {
             $set[] = 'state=NULL';
         }
         if ($set) { $p[] = $m['id']; q('UPDATE tn_matches SET ' . implode(', ', $set) . ' WHERE id=?', $p); }
+        if ($m['status'] === 'live' && array_key_exists('format', $in)) {
+            // New rules for a match in progress: every point already scored is counted again under them. If that finishes
+            // the match (a side already has the games or sets now needed), it ends there and later points are dropped.
+            $f = tn_format($in['format']);
+            q('UPDATE tn_matches SET format=? WHERE id=?', [json_encode($f), $m['id']]);
+            $m = $mget((int)$m['id']);
+            $eng = new TnMatch($f, (bool)$m['doubles'], (int)$m['first_srv']); $kept = [];
+            foreach (json_decode((string)$m['events'], true) ?: [] as $e) { if ($eng->over) break; $eng->apply($e); $kept[] = $e; }
+            tn_store($m, $kept);
+        }
         $out = ['match' => tn_match_out($mget((int)$m['id']), $u)];
         break;
     case 'match_delete':
