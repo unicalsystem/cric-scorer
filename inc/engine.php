@@ -149,6 +149,7 @@ function start_innings(array $m, array $in): void {
     add_innings_batter($innId, $s);
     if ($ns) add_innings_batter($innId, $ns);
     q("UPDATE matches SET status='live' WHERE id=?", [$m['id']]);
+    match_break_end($m);   // v1.48: a break at the innings break ends when the openers and bowler are picked
     if ($no <= 2 && penalty_runs_for_innings($innId) > 0) {          // penalty runs awarded before this innings began
         $inn = recompute_innings($innId);
         if (innings_end_reason($m, $inn)) complete_innings($m, $inn);
@@ -167,6 +168,7 @@ function score_ball(array $m, array $in): void {
     $avail = available_batters($inn);
     if (!$inn['striker_id'] || (!$inn['non_striker_id'] && count($avail) > 0)) fail('Select the next batter first');
     if (!$inn['bowler_id']) fail('Select the bowler first');
+    if (!isset($in['_innings_id']) && !empty($m['break_type'])) fail(break_label($m['break_type']) . ' break is on - pick the bowler to start play again');
 
     $extra = $in['extra'] ?? null;
     if ($extra === '' ) $extra = null;
@@ -277,6 +279,7 @@ function set_bowler(array $m, array $in): void {
     $max = bowler_cap($m, innings_bowler_balls((int)$inn['id']), $pid);   // v1.27: "up to X bowlers may bowl Y overs"
     if ($max > 0 && $startOfOver && bowler_balls((int)$inn['id'], $pid) >= $max * $bpo) fail("This bowler has finished their $max " . ($max === 1 ? 'over' : 'overs') . ((int)($m['extra_bowlers'] ?? 0) ? ' (the bigger quota is already used by ' . (int)$m['extra_bowlers'] . ' bowlers)' : ''));
     q('UPDATE innings SET bowler_id=? WHERE id=?', [$pid, $inn['id']]);
+    match_break_end($m);   // v1.48: picking the bowler starts play again after a break
 }
 
 function swap_strike(array $m): void {
@@ -665,7 +668,8 @@ function match_state(int $matchId, ?array $u): array {
     else {
         $innRow = row('SELECT * FROM innings WHERE id=?', [$last['id']]);
         $avail = available_batters($innRow);
-        if (!$innRow['striker_id'] || (!$innRow['non_striker_id'] && count($avail) > 0)) $needs = 'new_batter';
+        if (!empty($m['break_type'])) $needs = 'break';   // v1.48: lunch / tea / drinks
+        elseif (!$innRow['striker_id'] || (!$innRow['non_striker_id'] && count($avail) > 0)) $needs = 'new_batter';
         elseif (!$innRow['bowler_id']) $needs = 'new_bowler';
         else $needs = 'ball';
         $prevBowler = prev_over_bowler($m, $innRow);
@@ -726,6 +730,7 @@ function match_state(int $matchId, ?array $u): array {
             'penalties' => array_map(fn($r) => ['id' => (int)$r['id'], 'team_id' => (int)$r['team_id'], 'runs' => (int)$r['runs'], 'reason' => $r['reason']], rows('SELECT * FROM penalties WHERE match_id=? ORDER BY id', [$matchId])),
             'shot_types' => SHOT_TYPES, 'ball_type' => $m['ball_type'] ?? null, 'round_name' => $m['round_name'] ?? null,
             'ground' => !empty($m['ground_id']) ? row('SELECT id, name, city FROM grounds WHERE id=?', [$m['ground_id']]) : null,
+            'break' => match_break_info($m),
             'bonus' => !empty($m['bonus_json']) ? (json_decode($m['bonus_json'], true) ?: null) : null,
         ],
         'team1' => $t1, 'team2' => $t2, 'xi' => $xi, 'innings' => $inns,

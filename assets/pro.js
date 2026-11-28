@@ -251,6 +251,9 @@ App.matchMenu = () => {
     ${st.needs === 'completed' && m.status !== 'abandoned' ? '<button class="pbtn" onclick="App.undo()">↶ Undo last ball (re-open match)</button>' : ''}
     ${m.can_super_over && st.can_edit ? '<button class="pbtn" onclick="App.superOver()">🔥 Play a super over</button>' : ''}
     ${live ? `<button class="pbtn" onclick="App.endInnings()">${test ? '🏳️ Declare this innings' : '⏹️ End this innings now'}</button>` : ''}
+    ${st.can_edit && m.status === 'live' ? (m.break
+      ? `<button class="pbtn" onclick="App.breakCancel()">✖ Cancel ${esc(m.break.label.toLowerCase())} break</button>`
+      : '<button class="pbtn" onclick="App.breakSheet()">🍽️ Lunch / tea / drinks break <span class="s">pauses scoring</span></button>') : ''}
     ${test && m.status === 'live' ? '<button class="pbtn" onclick="App.drawMatch()">🤝 End match as a draw <span class="s">time is up</span></button>' : ''}
     ${!test && (['live', 'scheduled'].includes(m.status) || m.result_method === 'rain') ? '<button class="pbtn" onclick="App.rainSheet()">🌧️ Rain / DLS - reduce overs, revised target</button>' : ''}
     ${!test && inn1 && m.status !== 'completed' ? `<button class="pbtn" onclick="App.oversSheet()">🔢 Change overs <span class="s">${m.overs} overs now</span></button>` : ''}

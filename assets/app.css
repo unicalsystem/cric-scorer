@@ -683,3 +683,8 @@ body:not(.app-mode) #app{min-height:0;padding:0;box-shadow:none}
 .setup-row{display:flex;align-items:center;gap:12px;padding:13px 14px;margin-bottom:10px}
 .setup-chk{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-weight:900;color:#fff}
 .setup-chk.ok{background:var(--green);border-color:var(--green)}
+
+/* v1.48 lunch / tea / drinks break */
+.brk-card{background:linear-gradient(135deg,#fff4d6,#ffe7a8);border:1px solid #f1c75b;color:#4a3300}
+.brk-title{font-weight:900;font-size:18px;display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.brk-title span{font-size:13px;font-weight:700;opacity:.75}

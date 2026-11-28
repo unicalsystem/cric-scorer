@@ -4,6 +4,11 @@ The admin portal (More → Admin portal → Updates) reads this file from GitHub
 before installing. Add a `## <version> - <date>` section with `-` bullet points for every release,
 and bump `APP_VERSION` in `inc/version.php`.
 
+## 1.48.0 - 28 November 2026
+- **Lunch / tea / drinks break**: the scorer opens ⋯ → "🍽️ Lunch / tea / drinks break" during an innings (or at the innings break). Scoring stops, and everyone watching sees "🍽️ Lunch break · N min" on the match page and **LUNCH BREAK** on the streaming overlay.
+- **Play starts again when the bowler is picked**: tap "▶ Start play - pick the bowler". If the break came part-way through an over, the bowler of that over is marked "finishes it". At the innings break, picking the openers and opening bowler ends the break.
+- "Cancel break" undoes a break taken by mistake (the bowler of an unfinished over is put back). The break and the restart (with how long it lasted) are noted in the match log.
+
 ## 1.47.2 - 16 November 2026
 - **RV Badminton** - a separate badminton scoring app for RV Sports Club now ships in the `rvbadminton/` folder (served at rvbadminton.cricscorerapp.com), following the club's badminton rule sheet (21-point rally scoring, 30-point cap, single-game league, best-of-3 play-offs). Same accounts and admins as RV Tennis; its own data lives in `bd_` tables created on first open. Nothing in Cric-Scorer itself changes. See `rvbadminton/README.md`.
 

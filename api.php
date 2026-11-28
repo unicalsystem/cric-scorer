@@ -588,7 +588,8 @@ function handle(string $action, array $in, ?array $u) {
     case 'match_bowler': case 'match_swap': case 'match_undo': case 'match_end_innings': case 'match_abandon':
     case 'match_rain': case 'match_rain_end': case 'match_rain_undo': case 'match_dls_level':
     case 'match_penalty': case 'match_penalty_undo': case 'match_powerplay': case 'match_overs': case 'match_batter_change':
-    case 'match_ball_detail': case 'match_ball_edit': case 'match_ball_delete': case 'match_super_over': case 'match_details': case 'match_field': case 'match_draw': {
+    case 'match_ball_detail': case 'match_ball_edit': case 'match_ball_delete': case 'match_super_over': case 'match_details': case 'match_field': case 'match_draw':
+    case 'match_break': case 'match_break_cancel': {
         db()->beginTransaction();
         $m = load_match(int_in($in, 'id'), true);
         if (!can_score_match($m, $u)) fail('Only the scorer of this match can do that', 403);
@@ -623,6 +624,8 @@ function handle(string $action, array $in, ?array $u) {
             case 'match_draw': test_draw($m); match_log($m, 'Match drawn', $u); break;
             case 'match_details': match_details_save($m, $in); break;
             case 'match_field': match_field_set($m, $in); break;
+            case 'match_break': match_break_start($m, $in); break;
+            case 'match_break_cancel': match_break_cancel($m); break;
         }
         $logText = [
             'match_ball_edit' => 'Edited ball ' . (int)($in['seq'] ?? 0), 'match_ball_delete' => 'Deleted ball ' . (int)($in['seq'] ?? 0),

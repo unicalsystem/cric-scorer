@@ -745,6 +745,7 @@ function drawMatch(first) {
   if (m.tournament) html += `<a class="tour-link" href="#/tournament/${m.tournament.id}"><span style="font-size:20px">🏆</span><span class="grow ellipsis">Part of <b>${esc(m.tournament.name)}</b>${m.stage && m.stage !== 'league' && STAGE[m.stage] ? ` · ${STAGE[m.stage]}` : m.title ? ` · ${esc(m.title)}` : ''}</span><span class="small" style="font-weight:800;white-space:nowrap">Points & fixtures ›</span></a>`;
   const inn = st.innings.length ? curInn() : null;
   html += inn ? scoreBoard(st, inn) : preBoard(st);
+  if (m.break) html += breakCard(st);   // v1.48: lunch / tea / drinks
 
   if (st.needs === 'completed') html += resultCard(st);
   else if (st.can_edit) {
@@ -753,6 +754,7 @@ function drawMatch(first) {
     else if (sv === 'toss') html += tossSetup();
     else if (sv === 'hub') html += setupHub();
     else if (st.needs === 'openers') html += openersSetup();
+    else if (st.needs === 'break') html += `<div style="padding:0 0 0">${creasePanel(st, inn)}</div>`;
     else html += `<div style="padding:0 0 0">${creasePanel(st, inn)}</div><div class="content" style="padding-top:0">${scorePad()}</div>`;
   } else {
     if (!inn) html += `<div class="content"><div class="card empty"><div class="big">⏳</div>The match hasn't started yet.<br>${m.toss_winner_id ? esc(teamById(m.toss_winner_id).name) + ' won the toss and chose to ' + m.toss_decision + '.' : 'Waiting for the toss.'}</div></div>`;
@@ -760,7 +762,7 @@ function drawMatch(first) {
     else html += creasePanel(st, inn) + (m.status === 'live' ? `<div class="content" style="padding-top:0"><button class="btn light block" onclick="App.soundSheet()">🔊 Live commentary & crowd sounds</button></div>` : '');
   }
   if (st.innings.length) html += matchTabs(st);
-  const stage = ['ball', 'new_batter', 'new_bowler'].includes(st.needs) ? 'live' : st.needs;
+  const stage = ['ball', 'new_batter', 'new_bowler', 'break'].includes(st.needs) ? 'live' : st.needs;
   const sameStage = S.lastStage === stage + ':' + m.id;
   S.lastStage = stage + ':' + m.id;
   mount(html, editing && stage === 'live' ? null : (S.user ? 'matches' : null), { keepScroll: !first && sameStage });
@@ -1124,15 +1126,23 @@ App.bowlerSheet = (change = false) => {
   const st = S.m, inn = curInn(), m = st.match, bpo = m.balls_per_over;
   const start = inn.legal_balls % bpo === 0;
   const xi = st.xi[inn.bowling_team_id];
+  const brk = !change && m.break ? m.break : null;   // v1.48: picking the bowler ends the break
   const list = xi.map(p => {
     const f = inn.bowling.find(b => b.id === p.id);
     let dis = false, why = f ? `${f.o}-${f.m}-${f.r}-${f.w}` : 'yet to bowl';
     if (start && xi.length > 1 && p.id === st.prev_over_bowler) { dis = true; why = 'bowled last over'; }
     else if (m.max_overs_bowler && start && (st.bowler_balls[p.id] || 0) >= bowlerCap(m, st.bowler_balls, p.id) * bpo) { dis = true; why = 'overs quota done'; }
     if (change && p.id === inn.bowler_id) { dis = true; why = 'bowling now'; }
+    if (brk && p.id === brk.over_bowler_id) why = 'was bowling this over - finishes it · ' + why;
     return `<button class="pbtn" ${dis ? 'disabled' : ''} onclick="App.setBowler(${p.id})">${roleIcon(p.role)} ${esc(p.name)}<span class="s">${why}</span></button>`;
   });
   const overNo = Math.floor(inn.legal_balls / bpo) + 1;
+  if (brk) {
+    sheet(`<h3>${brk.icon} After ${esc(brk.label.toLowerCase())} - who bowls? 🎯</h3>
+      <div class="sub">Picking the bowler starts play again${start ? ` with over ${overNo}` : ` (over ${overNo} is part-way through)`}.</div>
+      <div class="plist">${list.join('')}</div>`);
+    return;
+  }
   sheet(`<h3>${change ? 'Change bowler' : `Over ${overNo} - who bowls? 🎯`}</h3>
     <div class="sub">${change ? 'Use this if a bowler is injured mid-over.' : 'Figures shown as Overs-Maidens-Runs-Wickets'}${m.max_overs_bowler ? ` · max ${m.max_overs_bowler} over${m.max_overs_bowler === 1 ? '' : 's'} each${m.extra_bowlers ? ` (${m.extra_bowlers} bowlers may bowl ${m.extra_overs})` : ''}` : ''}</div>
     <div class="plist">${list.join('')}</div>${change ? '' : '<button class="btn light block" onclick="App.undo()">↶ Undo last ball</button>'}`, { locked: !change });
@@ -2676,3 +2686,30 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.defe
   if (sp) { setTimeout(() => sp.classList.add('out'), 350); setTimeout(() => sp.remove(), 900); }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
+
+/* ---------- v1.48: lunch / tea / drinks break ---------- */
+function breakCard(st) {
+  const b = st.match.break, inn = st.innings.length ? curInn() : null;
+  const mins = b.mins ? ` · ${b.mins} min` : ' · just started';
+  const live = inn && inn.status === 'live';
+  let body = `<div class="brk-title">${b.icon} ${esc(b.label)} break<span>${mins}</span></div>`;
+  if (st.can_edit) body += live
+    ? `<div class="small" style="opacity:.85">Scoring is paused. Pick the bowler when the players are back - play starts again at once.</div>
+       <button class="btn block" style="margin-top:10px" onclick="App.bowlerSheet(false)">▶ Start play - pick the bowler</button>
+       <button class="btn light block" style="margin-top:8px" onclick="App.breakCancel()">✖ Cancel break (taken by mistake)</button>`
+    : `<div class="small" style="opacity:.85">Play starts again when the openers and opening bowler are picked below.</div>
+       <button class="btn light block" style="margin-top:8px" onclick="App.breakCancel()">✖ Cancel break</button>`;
+  else body += `<div class="small" style="opacity:.85">Play will resume shortly.</div>`;
+  return `<div class="content" style="padding-bottom:0"><div class="card brk-card">${body}</div></div>`;
+}
+App.breakSheet = () => {
+  const m = S.m.match;
+  if (m.break) return toast(m.break.label + ' break is already on');
+  sheet(`<h3>⏸️ Take a break</h3><div class="sub">Scoring stops and everyone watching sees the break. Play starts again as soon as you pick the bowler.</div>
+    <div class="plist">
+      <button class="pbtn" onclick="App.breakStart('lunch')">🍽️ Lunch break</button>
+      <button class="pbtn" onclick="App.breakStart('tea')">☕ Tea break</button>
+      <button class="pbtn" onclick="App.breakStart('drinks')">🥤 Drinks break</button></div>`);
+};
+App.breakStart = type => scoreAction('match_break', { type }).then(ok => { if (ok) toast({ lunch: '🍽️ Lunch break', tea: '☕ Tea break', drinks: '🥤 Drinks break' }[type] + ' - pick the bowler to start again'); });
+App.breakCancel = () => scoreAction('match_break_cancel').then(ok => { if (ok) toast('Break cancelled'); });
